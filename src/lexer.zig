@@ -57,11 +57,17 @@ const Lexer = struct {
 
         switch (self.char) {
             '=' => { result = try self.newToken(token.ASSIGN, self.char); },
+            '+' => { result = try self.newToken(token.PLUS, self.char); },
+            '-' => { result = try self.newToken(token.MINUS, self.char); },
+            '!' => { result = try self.newToken(token.BANG, self.char); },
+            '/' => { result = try self.newToken(token.SLASH, self.char); },
+            '*' => { result = try self.newToken(token.ASTERISK, self.char); },
+            '<' => { result = try self.newToken(token.LT, self.char); },
+            '>' => { result = try self.newToken(token.GT, self.char); },
             ';' => { result = try self.newToken(token.SEMICOLON, self.char); },
+            ',' => { result = try self.newToken(token.COMMA, self.char); },
             '(' => { result = try self.newToken(token.LPAREN, self.char); },
             ')' => { result = try self.newToken(token.RPAREN, self.char); },
-            ',' => { result = try self.newToken(token.COMMA, self.char); },
-            '+' => { result = try self.newToken(token.PLUS, self.char); },
             '{' => { result = try self.newToken(token.LBRACE, self.char); },
             '}' => { result = try self.newToken(token.RBRACE, self.char); },
             0 => { result = Token{ .token_type = token.EOF, .literal = "" }; },
@@ -118,6 +124,8 @@ test "next token" {
         \\};
         \\
         \\let result = add(five, ten);
+        \\!-/*5;
+        \\5 < 10 > 5;
     ;
 
     var lexer = Lexer.new(input);
@@ -128,11 +136,13 @@ test "next token" {
     try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.INT, .literal = "5" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
     try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "ten" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.INT, .literal = "10" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
     try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "add" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
@@ -143,12 +153,15 @@ test "next token" {
     try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "y" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.RPAREN, .literal = ")" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.LBRACE, .literal = "{" }, try lexer.nextToken());
+
     try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "x" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.PLUS, .literal = "+" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "y" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
     try testTokenEquality(Token{ .token_type = token.RBRACE, .literal = "}" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
     try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "result" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
@@ -159,6 +172,21 @@ test "next token" {
     try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "ten" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.RPAREN, .literal = ")" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.BANG, .literal = "!" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.MINUS, .literal = "-" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SLASH, .literal = "/" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.ASTERISK, .literal = "*" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "5" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "5" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LT, .literal = "<" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "10" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.GT, .literal = ">" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "5" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
     try testTokenEquality(Token{ .token_type = token.EOF, .literal = "" }, try lexer.nextToken());
 }
 

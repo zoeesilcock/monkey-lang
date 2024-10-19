@@ -26,6 +26,13 @@ pub const INT = "INT";   // 1343456
 // Operators
 pub const ASSIGN = "=";
 pub const PLUS = "+";
+pub const MINUS = "-";
+pub const BANG = "!";
+pub const ASTERISK = "*";
+pub const SLASH = "/";
+
+pub const LT = "<";
+pub const GT = ">";
 
 // Delimiters
 pub const COMMA = ",";
