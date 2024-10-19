@@ -13,6 +13,13 @@ pub const Token = struct {
     pub fn deinit(self: *Token, allocator: std.mem.Allocator) void {
         allocator.free(self.literal);
     }
+
+    pub fn format(self: Token, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = options;
+        _ = fmt;
+
+        try writer.print("{{ token_type: \"{s}\", literal: \"{s}\" }}", .{ self.token_type, self.literal });
+    }
 };
 
 // Token types
