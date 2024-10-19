@@ -30,6 +30,14 @@ const Lexer = struct {
         self.read_position += 1;
     }
 
+    fn peekChar(self: *Lexer) u8 {
+        if (self.read_position >= self.input.len) {
+            return 0;
+        } else {
+            return self.input[self.read_position];
+        }
+    }
+
     fn readIdentifier(self: *Lexer) []const u8 {
         const position = self.position;
 
@@ -56,10 +64,28 @@ const Lexer = struct {
         self.skipWhitespace();
 
         switch (self.char) {
-            '=' => { result = try self.newToken(token.ASSIGN, self.char); },
+            '=' => {
+                if (self.peekChar() == '=') {
+                    const char1 = self.char;
+                    self.readChar();
+                    result.literal = try self.arena.allocator().dupe(u8, &.{ char1, self.char });
+                    result.token_type = token.EQ;
+                } else {
+                    result = try self.newToken(token.ASSIGN, self.char);
+                }
+            },
             '+' => { result = try self.newToken(token.PLUS, self.char); },
             '-' => { result = try self.newToken(token.MINUS, self.char); },
-            '!' => { result = try self.newToken(token.BANG, self.char); },
+            '!' => {
+                if (self.peekChar() == '=') {
+                    const char1 = self.char;
+                    self.readChar();
+                    result.literal = try self.arena.allocator().dupe(u8, &.{ char1, self.char });
+                    result.token_type = token.NOT_EQ;
+                } else {
+                    result = try self.newToken(token.BANG, self.char);
+                }
+            },
             '/' => { result = try self.newToken(token.SLASH, self.char); },
             '*' => { result = try self.newToken(token.ASTERISK, self.char); },
             '<' => { result = try self.newToken(token.LT, self.char); },
@@ -132,6 +158,9 @@ test "next token" {
         \\} else {
         \\    return false;
         \\}
+        \\
+        \\10 == 10;
+        \\10 != 9;
     ;
 
     var lexer = Lexer.new(input);
@@ -214,6 +243,16 @@ test "next token" {
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
 
     try testTokenEquality(Token{ .token_type = token.RBRACE, .literal = "}" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "10" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.EQ, .literal = "==" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "10" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "10" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.NOT_EQ, .literal = "!=" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "9" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
 
     try testTokenEquality(Token{ .token_type = token.EOF, .literal = "" }, try lexer.nextToken());
 }
