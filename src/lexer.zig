@@ -30,18 +30,55 @@ const Lexer = struct {
         self.read_position += 1;
     }
 
+    fn readIdentifier(self: *Lexer) []const u8 {
+        const position = self.position;
+
+        while (isLetter(self.char)) {
+            self.readChar();
+        }
+
+        return self.input[position..self.position];
+    }
+
+    fn readNumber(self: *Lexer) []const u8 {
+        const position = self.position;
+
+        while (isDigit(self.char)) {
+            self.readChar();
+        }
+
+        return self.input[position..self.position];
+    }
+
     pub fn nextToken(self: *Lexer) !Token {
-        const result = switch (self.char) {
-            '=' => try self.newToken(token.ASSIGN, self.char),
-            ';' => try self.newToken(token.SEMICOLON, self.char),
-            '(' => try self.newToken(token.LPAREN, self.char),
-            ')' => try self.newToken(token.RPAREN, self.char),
-            ',' => try self.newToken(token.COMMA, self.char),
-            '+' => try self.newToken(token.PLUS, self.char),
-            '{' => try self.newToken(token.LBRACE, self.char),
-            '}' => try self.newToken(token.RBRACE, self.char),
-            else => Token{ .token_type = token.EOF, .literal = "" },
-        };
+        var result = Token{};
+
+        self.skipWhitespace();
+
+        switch (self.char) {
+            '=' => { result = try self.newToken(token.ASSIGN, self.char); },
+            ';' => { result = try self.newToken(token.SEMICOLON, self.char); },
+            '(' => { result = try self.newToken(token.LPAREN, self.char); },
+            ')' => { result = try self.newToken(token.RPAREN, self.char); },
+            ',' => { result = try self.newToken(token.COMMA, self.char); },
+            '+' => { result = try self.newToken(token.PLUS, self.char); },
+            '{' => { result = try self.newToken(token.LBRACE, self.char); },
+            '}' => { result = try self.newToken(token.RBRACE, self.char); },
+            0 => { result = Token{ .token_type = token.EOF, .literal = "" }; },
+            else => {
+                if (isLetter(self.char)) {
+                    result.literal = self.readIdentifier();
+                    result.token_type = token.lookupIdent(result.literal);
+                    return result;
+                } else if (isDigit(self.char)) {
+                    result.literal = self.readNumber();
+                    result.token_type = token.INT;
+                    return result;
+                } else {
+                    result = try self.newToken(token.ILLEGAL, self.char);
+                }
+            },
+        }
 
         self.readChar();
 
@@ -52,24 +89,75 @@ const Lexer = struct {
         return try Token.new(token_type, char, self.arena.allocator());
     }
 
+    fn isLetter(char: u8) bool {
+        return ('a' <= char and char <= 'z') or ('A' <= char and char <= 'Z') or char == '_';
+    }
+
+    fn isDigit(char: u8) bool {
+        return '0' <= char and char <= '9';
+    }
+
+    fn skipWhitespace(self: *Lexer) void {
+        while (self.char == ' ' or self.char == '\t' or self.char == '\n' or self.char == '\r') {
+            self.readChar();
+        }
+    }
+
     pub fn deinit(self: *Lexer) void {
         self.arena.deinit();
     }
 };
 
 test "next token" {
-    const input = "=+(){},;";
+    const input = 
+        \\let five = 5;
+        \\let ten = 10;
+        \\
+        \\let add = fn(x, y) {
+        \\  x + y;
+        \\};
+        \\
+        \\let result = add(five, ten);
+    ;
 
     var lexer = Lexer.new(input);
     defer lexer.deinit();
 
+    try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "five" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
-    try testTokenEquality(Token{ .token_type = token.PLUS, .literal = "+" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "5" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "ten" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "10" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "add" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.FUNCTION, .literal = "fn" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.LPAREN, .literal = "(" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "x" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.COMMA, .literal = "," }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "y" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.RPAREN, .literal = ")" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.LBRACE, .literal = "{" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "x" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.PLUS, .literal = "+" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "y" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.RBRACE, .literal = "}" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "result" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.ASSIGN, .literal = "=" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "add" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LPAREN, .literal = "(" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "five" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.COMMA, .literal = "," }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.IDENT, .literal = "ten" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.RPAREN, .literal = ")" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.EOF, .literal = "" }, try lexer.nextToken());
 }
