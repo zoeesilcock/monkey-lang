@@ -126,6 +126,12 @@ test "next token" {
         \\let result = add(five, ten);
         \\!-/*5;
         \\5 < 10 > 5;
+        \\
+        \\ if (5 < 10) {
+        \\    return true;
+        \\} else {
+        \\    return false;
+        \\}
     ;
 
     var lexer = Lexer.new(input);
@@ -186,6 +192,28 @@ test "next token" {
     try testTokenEquality(Token{ .token_type = token.GT, .literal = ">" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.INT, .literal = "5" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.IF, .literal = "if" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LPAREN, .literal = "(" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "5" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LT, .literal = "<" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "10" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.RPAREN, .literal = ")" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LBRACE, .literal = "{" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.RETURN, .literal = "return" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.TRUE, .literal = "true" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.RBRACE, .literal = "}" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.ELSE, .literal = "else" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.LBRACE, .literal = "{" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.RETURN, .literal = "return" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.FALSE, .literal = "false" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.RBRACE, .literal = "}" }, try lexer.nextToken());
 
     try testTokenEquality(Token{ .token_type = token.EOF, .literal = "" }, try lexer.nextToken());
 }

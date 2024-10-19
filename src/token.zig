@@ -46,6 +46,11 @@ pub const RBRACE = "}";
 // Keywords
 pub const FUNCTION = "FUNCTION";
 pub const LET = "LET";
+pub const TRUE = "TRUE";
+pub const FALSE = "FALSE";
+pub const IF = "IF";
+pub const ELSE = "ELSE";
+pub const RETURN = "RETURN";
 
 pub fn lookupIdent(ident: []const u8) TokenType {
     var result: TokenType = undefined;
@@ -54,6 +59,16 @@ pub fn lookupIdent(ident: []const u8) TokenType {
         result = FUNCTION;
     } else if (std.mem.eql(u8, "let", ident)) {
         result = LET;
+    } else if (std.mem.eql(u8, "true", ident)) {
+        result = TRUE;
+    } else if (std.mem.eql(u8, "false", ident)) {
+        result = FALSE;
+    } else if (std.mem.eql(u8, "if", ident)) {
+        result = IF;
+    } else if (std.mem.eql(u8, "else", ident)) {
+        result = ELSE;
+    } else if (std.mem.eql(u8, "return", ident)) {
+        result = RETURN;
     } else {
         result = IDENT;
     }
