@@ -73,6 +73,20 @@ pub const LetStatement = struct {
     }
 };
 
+pub const ReturnStatement = struct {
+    token: token.Token,
+    name: *Identifier,
+    return_value: Expression,
+
+    pub fn tokenLiteral(self: *ReturnStatement) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn statementNode(self: *ReturnStatement) void {
+        _ = self;
+    }
+};
+
 pub const Identifier = struct {
     token: token.Token,
     value: []const u8,

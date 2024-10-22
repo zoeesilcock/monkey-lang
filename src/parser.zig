@@ -60,6 +60,12 @@ const Parser = struct {
             } else {
                 return null;
             }
+        } else if (std.mem.eql(u8, self.cur_token.token_type, token.RETURN)) {
+            if (try self.parseReturnStatement()) |let_stmt| {
+                return ast.Statement.init(let_stmt);
+            } else {
+                return null;
+            }
         } else {
             return null;
         }
@@ -89,6 +95,19 @@ const Parser = struct {
             try self.nextToken();
         }
 
+        return stmt;
+    }
+
+    fn parseReturnStatement(self: *Parser) !?*ast.ReturnStatement {
+        var stmt: *ast.ReturnStatement = try self.arena.allocator().create(ast.ReturnStatement);
+        stmt.token = self.cur_token;
+
+        try self.nextToken();
+
+        while (!self.curTokenIs(token.SEMICOLON)) {
+            try self.nextToken();
+        }
+    
         return stmt;
     }
 
@@ -154,6 +173,14 @@ test "test let statements" {
     try testLetStatement(program.statements[2], "foobar");
 }
 
+fn testLetStatement(s: ast.Statement, expected_name: []const u8) !void {
+    try std.testing.expectEqualSlices(u8, s.tokenLiteral(), "let");
+
+    const let_stmt: *const ast.LetStatement = @ptrCast(@alignCast(s.ptr));
+    try std.testing.expectEqualSlices(u8, expected_name, let_stmt.name.value);
+    try std.testing.expectEqualSlices(u8, expected_name, let_stmt.name.tokenLiteral());
+}
+
 test "test parser errors for let statements" {
     const input = 
         \\let x 5;
@@ -172,14 +199,6 @@ test "test parser errors for let statements" {
     try expectErrors(&p, 3);
 }
 
-fn testLetStatement(s: ast.Statement, name: []const u8) !void {
-    try std.testing.expectEqualSlices(u8, s.tokenLiteral(), "let");
-
-    const let_stmt: *const ast.LetStatement = @ptrCast(@alignCast(s.ptr));
-    try std.testing.expectEqualSlices(u8, let_stmt.name.value, name);
-    try std.testing.expectEqualSlices(u8, let_stmt.name.tokenLiteral(), name);
-}
-
 fn expectErrors(parser: *Parser, error_count: u32) !void {
     const errors = parser.getErrors();
 
@@ -192,4 +211,28 @@ fn expectErrors(parser: *Parser, error_count: u32) !void {
     }
 
     try std.testing.expectEqual(error_count, errors.len);
+}
+
+test "test return statements" {
+    const input = 
+        \\return 5;
+        \\return 10;
+        \\return 993322;
+    ;
+
+    var l = lexer.Lexer.new(input);
+    defer l.deinit();
+
+    var p = try Parser.new(&l);
+    var program = try p.parseProgram();
+    defer p.deinit(&program);
+
+    try expectErrors(&p, 0);
+
+    try std.testing.expectEqual(3, program.statements.len);
+}
+
+fn testReturnStatement(s: ast.Statement) !void {
+    const return_stmt: *const ast.ReturnStatement = @ptrCast(@alignCast(s.ptr));
+    try std.testing.expectEqualSlices(u8, "return", return_stmt.name.tokenLiteral());
 }
