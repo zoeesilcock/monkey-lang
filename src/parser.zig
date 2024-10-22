@@ -8,14 +8,19 @@ const Parser = struct {
     cur_token: token.Token = undefined,
     peek_token: token.Token = undefined,
     arena: std.heap.ArenaAllocator,
+    errors: [][]const u8,
 
     pub fn new(l: *lexer.Lexer) !Parser {
-        const arena = std.heap.ArenaAllocator.init(std.heap.page_allocator); 
-        var p = Parser{ .l = l, .arena = arena }; 
+        const arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var p = Parser{
+            .l = l,
+            .arena = arena,
+            .errors = &.{},
+        };
 
         try p.nextToken();
         try p.nextToken();
-        
+
         return p;
     }
 
@@ -24,9 +29,8 @@ const Parser = struct {
         self.arena.deinit();
     }
 
-    fn nextToken(self: *Parser) !void {
-        self.cur_token = self.peek_token;
-        self.peek_token = try self.l.nextToken();
+    pub fn getErrors(self: *Parser) [][]const u8 {
+        return self.errors;
     }
 
     pub fn parseProgram(self: *Parser) !ast.Program {
@@ -65,7 +69,6 @@ const Parser = struct {
         const tok = self.cur_token;
 
         if (!try self.expectPeek(token.IDENT)) {
-            std.debug.print("no IDENT\n", .{});
             return null;
         }
 
@@ -79,16 +82,19 @@ const Parser = struct {
         stmt.value = undefined;
 
         if (!try self.expectPeek(token.ASSIGN)) {
-            std.debug.print("no ASSIGN\n", .{});
             return null;
         }
 
         while (self.curTokenIs(token.SEMICOLON)) {
-            std.debug.print("no SEMICOLON\n", .{});
             try self.nextToken();
         }
 
         return stmt;
+    }
+
+    fn nextToken(self: *Parser) !void {
+        self.cur_token = self.peek_token;
+        self.peek_token = try self.l.nextToken();
     }
 
     fn curTokenIs(self: *Parser, t: token.TokenType) bool {
@@ -105,12 +111,27 @@ const Parser = struct {
             return true;
         }
 
+        try self.peekError(t);
         return false;
+    }
+
+    fn peekError(self: *Parser, t: token.TokenType) !void {
+        var error_array = try std.ArrayList([]const u8).initCapacity(self.arena.allocator(), self.errors.len);
+        try error_array.appendSlice(self.errors);
+
+        const message = try std.fmt.allocPrint(
+            self.arena.allocator(),
+            "expected next token to be {s}, got {s} instead\n",
+            .{ t, self.peek_token.token_type },
+        );
+        try error_array.append(message);
+
+        self.errors = try error_array.toOwnedSlice();
     }
 };
 
-test "test LetStatements" {
-    const input = 
+test "test let statements" {
+    const input =
         \\let x = 5;
         \\let y = 10;
         \\let foobar = 838383;
@@ -120,9 +141,11 @@ test "test LetStatements" {
     defer l.deinit();
 
     var p = try Parser.new(&l);
-    
+
     var program = try p.parseProgram();
     defer p.deinit(&program);
+
+    try expectErrors(&p, 0);
 
     try std.testing.expectEqual(program.statements.len, 3);
 
@@ -131,10 +154,42 @@ test "test LetStatements" {
     try testLetStatement(program.statements[2], "foobar");
 }
 
+test "test parser errors for let statements" {
+    const input = 
+        \\let x 5;
+        \\let = 10;
+        \\let 838383;
+    ;
+
+    var l = lexer.Lexer.new(input);
+    defer l.deinit();
+
+    var p = try Parser.new(&l);
+
+    var program = try p.parseProgram();
+    defer p.deinit(&program);
+
+    try expectErrors(&p, 3);
+}
+
 fn testLetStatement(s: ast.Statement, name: []const u8) !void {
     try std.testing.expectEqualSlices(u8, s.tokenLiteral(), "let");
 
     const let_stmt: *const ast.LetStatement = @ptrCast(@alignCast(s.ptr));
     try std.testing.expectEqualSlices(u8, let_stmt.name.value, name);
     try std.testing.expectEqualSlices(u8, let_stmt.name.tokenLiteral(), name);
+}
+
+fn expectErrors(parser: *Parser, error_count: u32) !void {
+    const errors = parser.getErrors();
+
+    if (errors.len != error_count) {
+        std.debug.print("parser has {d} unexpected errors\n", .{ errors.len });
+
+        for (errors) |err| {
+            std.debug.print("parser error: {s}", .{ err });
+        }
+    }
+
+    try std.testing.expectEqual(error_count, errors.len);
 }
