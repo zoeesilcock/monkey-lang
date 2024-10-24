@@ -85,7 +85,7 @@ const Parser = struct {
         var stmt: *ast.LetStatement = try self.arena.allocator().create(ast.LetStatement);
         stmt.token = tok;
         stmt.name = name;
-        stmt.value = undefined;
+        stmt.value = null;
 
         if (!try self.expectPeek(token.ASSIGN)) {
             return null;
@@ -101,6 +101,7 @@ const Parser = struct {
     fn parseReturnStatement(self: *Parser) !?*ast.ReturnStatement {
         var stmt: *ast.ReturnStatement = try self.arena.allocator().create(ast.ReturnStatement);
         stmt.token = self.cur_token;
+        stmt.return_value = null;
 
         try self.nextToken();
 

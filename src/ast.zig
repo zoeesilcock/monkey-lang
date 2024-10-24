@@ -2,7 +2,7 @@ const std = @import("std");
 const token = @import("token.zig");
 
 pub const Program = struct {
-    statements: []Statement,
+    statements: []const Statement,
 
     pub fn tokenLiteral(self: *Program) []const u8 {
         if (self.statements.len > 0) {
@@ -11,7 +11,44 @@ pub const Program = struct {
             return "";
         }
     }
+
+    pub fn string(self: *const Program, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        for (self.statements) |stmt| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                stmt.string(allocator),
+            }) catch "";
+        }
+
+        return out;
+    }
 };
+
+test "Program.string" {
+    const program = Program{
+        .statements = &.{
+            Statement.init(@constCast(&LetStatement{
+                .token = token.Token{ .token_type = token.LET, .literal = "let" },
+                .name = @constCast(&Identifier{
+                    .token = token.Token{ .token_type = token.IDENT, .literal = "myVar" },
+                    .value = "myVar",
+                }),
+                .value = @constCast(&Expression.init(@constCast(&Identifier{
+                    .token = token.Token{ .token_type = token.IDENT, .literal = "anotherVar" },
+                    .value = "anotherVar",
+                }))),
+            })),
+        },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const test_string = program.string(arena.allocator());
+    defer arena.deinit();
+
+    try std.testing.expectEqualSlices(u8, "let myVar = anotherVar;", test_string);
+}
 
 pub const Statement = struct {
     ptr: *anyopaque,
@@ -20,6 +57,7 @@ pub const Statement = struct {
     const VTab = struct {
         tokenLiteral: *const fn (ptr: *anyopaque) []const u8,
         statementNode: *const fn (ptr: *anyopaque) void,
+        string: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) []const u8,
     };
 
     pub fn tokenLiteral(self: Statement) []const u8 {
@@ -28,6 +66,10 @@ pub const Statement = struct {
 
     pub fn statementNode(self: Statement) void {
         self.vtab.statementNode(self.ptr);
+    }
+
+    pub fn string(self: Statement, allocator: std.mem.Allocator) []const u8 {
+        return self.vtab.string(self.ptr, allocator);
     }
 
     pub fn init(obj: anytype) Statement {
@@ -47,6 +89,10 @@ pub const Statement = struct {
                 const self: Ptr = @ptrCast(@alignCast(ptr));
                 self.statementNode();
             }
+            fn string(ptr: *anyopaque, allocator: std.mem.Allocator) []const u8 {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                return self.string(allocator);
+            }
         };
 
         return .{
@@ -54,6 +100,7 @@ pub const Statement = struct {
             .vtab = &.{
                 .tokenLiteral = impl.tokenLiteral,
                 .statementNode = impl.statementNode,
+                .string = impl.string,
             },
         };
     }
@@ -62,7 +109,7 @@ pub const Statement = struct {
 pub const LetStatement = struct {
     token: token.Token,
     name: *Identifier,
-    value: Expression,
+    value: ?*Expression,
 
     pub fn tokenLiteral(self: *LetStatement) []const u8 {
         return self.token.literal;
@@ -71,12 +118,28 @@ pub const LetStatement = struct {
     pub fn statementNode(self: *LetStatement) void {
         _ = self;
     }
+
+    pub fn string(self: *LetStatement, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            self.tokenLiteral(),
+            " ",
+            self.name.string(allocator),
+            " = ",
+            if (self.value) |value| value.string(allocator) else "",
+            ";",
+        }) catch "";
+
+        return out;
+    }
 };
 
 pub const ReturnStatement = struct {
     token: token.Token,
     name: *Identifier,
-    return_value: Expression,
+    return_value: ?*Expression,
 
     pub fn tokenLiteral(self: *ReturnStatement) []const u8 {
         return self.token.literal;
@@ -84,6 +147,37 @@ pub const ReturnStatement = struct {
 
     pub fn statementNode(self: *ReturnStatement) void {
         _ = self;
+    }
+
+    pub fn string(self: *ReturnStatement, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            self.tokenLiteral(),
+            " ",
+            if (self.return_value) |return_value| return_value.string(allocator) else "",
+            ";",
+        }) catch "";
+
+        return out;
+    }
+};
+
+pub const ExpressionStatement = struct {
+    token: token.Token,
+    expression: Expression,
+
+    pub fn tokenLiteral(self: *ExpressionStatement) []const u8 {
+        return self.expression.token.literal;
+    }
+
+    pub fn statementNode(self: *ExpressionStatement) void {
+        _ = self;
+    }
+
+    pub fn string(self: *ExpressionStatement, allocator: std.mem.Allocator) []const u8 {
+        self.expression.string(allocator);
     }
 };
 
@@ -94,6 +188,15 @@ pub const Identifier = struct {
     pub fn tokenLiteral(self: *Identifier) []const u8 {
         return self.token.literal;
     }
+
+    pub fn expressionNode(self: Identifier) void {
+        _ = self;
+    }
+
+    pub fn string(self: *Identifier, allocator: std.mem.Allocator) []const u8 {
+        _ = allocator;
+        return self.value;
+    }
 };
 
 pub const Expression = struct {
@@ -103,6 +206,7 @@ pub const Expression = struct {
     const VTab = struct {
         tokenLiteral: *const fn(ptr: *anyopaque) []const u8,
         expressionNode: *const fn (ptr: *anyopaque) void,
+        string: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) []const u8,
     };
 
     pub fn tokenLiteral(self: Expression) []const u8 {
@@ -111,6 +215,10 @@ pub const Expression = struct {
 
     pub fn expressionNode(self: Expression) void {
         self.vtab.expressionNode(self.ptr);
+    }
+
+    pub fn string(self: Expression, allocator: std.mem.Allocator) []const u8 {
+        return self.vtab.string(self.ptr, allocator);
     }
 
     pub fn init(obj: anytype) Expression {
@@ -130,6 +238,10 @@ pub const Expression = struct {
                 const self: Ptr = @ptrCast(@alignCast(ptr));
                 self.expressionNode();
             }
+            fn string(ptr: *anyopaque, allocator: std.mem.Allocator) []const u8 {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                return self.string(allocator);
+            }
         };
 
         return .{
@@ -137,6 +249,7 @@ pub const Expression = struct {
             .vtab = &.{
                 .tokenLiteral = impl.tokenLiteral,
                 .expressionNode = impl.expressionNode,
+                .string = impl.string,
             },
         };
     }
