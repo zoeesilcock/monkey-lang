@@ -166,10 +166,14 @@ pub const ReturnStatement = struct {
 
 pub const ExpressionStatement = struct {
     token: token.Token,
-    expression: Expression,
+    expression: ?Expression,
 
     pub fn tokenLiteral(self: *ExpressionStatement) []const u8 {
-        return self.expression.token.literal;
+        if (self.expression) |expression| {
+            return expression.tokenLiteral();
+        }
+
+        return "";
     }
 
     pub fn statementNode(self: *ExpressionStatement) void {
@@ -177,7 +181,11 @@ pub const ExpressionStatement = struct {
     }
 
     pub fn string(self: *ExpressionStatement, allocator: std.mem.Allocator) []const u8 {
-        self.expression.string(allocator);
+        if (self.expression) |expression| {
+            return expression.string(allocator);
+        }
+
+        return "";
     }
 };
 
