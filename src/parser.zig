@@ -3,8 +3,8 @@ const ast = @import("ast.zig");
 const lexer = @import("lexer.zig");
 const token = @import("token.zig");
 
-const prefixParseFn = *const fn(self: *Parser) std.mem.Allocator.Error!ast.Expression;
-const infixParseFn = *const fn(self: *Parser, expression: ast.Expression) std.mem.Allocator.Error!ast.Expression;
+const prefixParseFn = *const fn(self: *Parser) std.mem.Allocator.Error!?ast.Expression;
+const infixParseFn = *const fn(self: *Parser, expression: ast.Expression) std.mem.Allocator.Error!?ast.Expression;
 
 const OperatorPrecedence = enum(u32) {
     LOWEST = 0,
@@ -39,6 +39,7 @@ const Parser = struct {
         };
 
         try p.registerPrefix(token.IDENT, parseIdentifier);
+        try p.registerPrefix(token.INT, parseIntegerLiteral);
 
         try p.nextToken();
         try p.nextToken();
@@ -97,7 +98,6 @@ const Parser = struct {
                 return null;
             }
         } else {
-            // return ast.Statement.init(try self.parseExpressionStatement());
             if (try self.parseExpressionStatement()) |expression_stmt| {
                 return ast.Statement.init(expression_stmt);
             } else {
@@ -126,7 +126,10 @@ const Parser = struct {
             return null;
         }
 
-        while (self.curTokenIs(token.SEMICOLON)) {
+        try self.nextToken();
+        stmt.value = try self.parseExpression(.LOWEST);
+
+        if (self.curTokenIs(token.SEMICOLON)) {
             try self.nextToken();
         }
 
@@ -169,7 +172,9 @@ const Parser = struct {
         var left_expression: ?ast.Expression = null;
 
         if (self.prefixParseFns.get(self.cur_token.token_type)) |prefixFn| {
-            left_expression = try prefixFn(self);
+            if (try prefixFn(self)) |expression| {
+                left_expression = expression;
+            }
         }
 
         return left_expression;
@@ -213,7 +218,7 @@ const Parser = struct {
     }
 };
 
-fn parseIdentifier(self: *Parser) std.mem.Allocator.Error!ast.Expression {
+fn parseIdentifier(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     var identifier: *ast.Identifier = try self.arena.allocator().create(ast.Identifier);
     identifier.token = self.cur_token;
     identifier.value = try self.arena.allocator().dupe(u8, self.cur_token.literal);
@@ -221,6 +226,19 @@ fn parseIdentifier(self: *Parser) std.mem.Allocator.Error!ast.Expression {
     return ast.Expression.init(identifier);
 }
 
+fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    var expression: ?ast.Expression = null;
+
+    const opt_value: ?i64 = std.fmt.parseInt(i64, self.cur_token.literal, 10) catch null;
+    if (opt_value) |value| {
+        var lit: *ast.IntegerLiteral = try self.arena.allocator().create(ast.IntegerLiteral);
+        lit.token = self.cur_token;
+        lit.value = value;
+        expression = ast.Expression.init(lit);
+    }
+
+    return expression;
+}
 
 test "let statements" {
     const input =
@@ -239,6 +257,7 @@ test "let statements" {
 
     try expectErrors(&p, 0);
 
+    // TODO: The expressions should be in the value of the LetStatement.
     try std.testing.expectEqual(3, program.statements.len);
 
     try testLetStatement("x", program.statements[0]);
@@ -330,5 +349,28 @@ test "identifier expression" {
         const ident: *ast.Identifier = @ptrCast(@alignCast(expression.ptr));
         try std.testing.expectEqualSlices(u8, "foobar", ident.value);
         try std.testing.expectEqualSlices(u8, "foobar", ident.tokenLiteral());
+    }
+}
+
+test "integerer literal expression" {
+    const input = "5;";
+
+    var l = lexer.Lexer.new(input);
+    defer l.deinit();
+
+    var p = try Parser.new(&l);
+
+    var program = try p.parseProgram();
+    defer p.deinit(&program);
+
+    try expectErrors(&p, 0);
+
+    try std.testing.expectEqual(program.statements.len, 1);
+
+    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(program.statements[0].ptr));
+    if (stmt.expression) |expression| {
+        const literal: *ast.IntegerLiteral = @ptrCast(@alignCast(expression.ptr));
+        try std.testing.expectEqual(5, literal.value);
+        try std.testing.expectEqualSlices(u8, "5", literal.tokenLiteral());
     }
 }

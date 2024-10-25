@@ -35,10 +35,10 @@ test "Program.string" {
                     .token = token.Token{ .token_type = token.IDENT, .literal = "myVar" },
                     .value = "myVar",
                 }),
-                .value = @constCast(&Expression.init(@constCast(&Identifier{
+                .value = Expression.init(@constCast(&Identifier{
                     .token = token.Token{ .token_type = token.IDENT, .literal = "anotherVar" },
                     .value = "anotherVar",
-                }))),
+                })),
             })),
         },
     };
@@ -109,7 +109,7 @@ pub const Statement = struct {
 pub const LetStatement = struct {
     token: token.Token,
     name: *Identifier,
-    value: ?*Expression,
+    value: ?Expression,
 
     pub fn tokenLiteral(self: *LetStatement) []const u8 {
         return self.token.literal;
@@ -139,7 +139,7 @@ pub const LetStatement = struct {
 pub const ReturnStatement = struct {
     token: token.Token,
     name: *Identifier,
-    return_value: ?*Expression,
+    return_value: ?Expression,
 
     pub fn tokenLiteral(self: *ReturnStatement) []const u8 {
         return self.token.literal;
@@ -186,24 +186,6 @@ pub const ExpressionStatement = struct {
         }
 
         return "";
-    }
-};
-
-pub const Identifier = struct {
-    token: token.Token,
-    value: []const u8,
-
-    pub fn tokenLiteral(self: *Identifier) []const u8 {
-        return self.token.literal;
-    }
-
-    pub fn expressionNode(self: Identifier) void {
-        _ = self;
-    }
-
-    pub fn string(self: *Identifier, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        return self.value;
     }
 };
 
@@ -263,3 +245,38 @@ pub const Expression = struct {
     }
 };
 
+pub const Identifier = struct {
+    token: token.Token,
+    value: []const u8,
+
+    pub fn tokenLiteral(self: *Identifier) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: Identifier) void {
+        _ = self;
+    }
+
+    pub fn string(self: *Identifier, allocator: std.mem.Allocator) []const u8 {
+        _ = allocator;
+        return self.value;
+    }
+};
+
+pub const IntegerLiteral = struct {
+    token: token.Token,
+    value: i64,
+
+    pub fn tokenLiteral(self: *IntegerLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: IntegerLiteral) void {
+        _ = self;
+    }
+
+    pub fn string(self: *IntegerLiteral, allocator: std.mem.Allocator) []const u8 {
+        _ = allocator;
+        return self.token.literal;
+    }
+};
