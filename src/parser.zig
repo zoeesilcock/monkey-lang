@@ -3,8 +3,8 @@ const ast = @import("ast.zig");
 const lexer = @import("lexer.zig");
 const token = @import("token.zig");
 
-const prefixParseFn = *const fn(self: *Parser) std.mem.Allocator.Error!?ast.Expression;
-const infixParseFn = *const fn(self: *Parser, expression: ast.Expression) std.mem.Allocator.Error!?ast.Expression;
+const prefixParseFn = *const fn (self: *Parser) std.mem.Allocator.Error!?ast.Expression;
+const infixParseFn = *const fn (self: *Parser, expression: ast.Expression) std.mem.Allocator.Error!?ast.Expression;
 
 const OperatorPrecedence = enum(u32) {
     LOWEST = 0,
@@ -40,6 +40,8 @@ const Parser = struct {
 
         try p.registerPrefix(token.IDENT, parseIdentifier);
         try p.registerPrefix(token.INT, parseIntegerLiteral);
+        try p.registerPrefix(token.BANG, parsePrefixExpression);
+        try p.registerPrefix(token.MINUS, parsePrefixExpression);
 
         try p.nextToken();
         try p.nextToken();
@@ -129,7 +131,7 @@ const Parser = struct {
         try self.nextToken();
         stmt.value = try self.parseExpression(.LOWEST);
 
-        if (self.curTokenIs(token.SEMICOLON)) {
+        if (self.peekTokenIs(token.SEMICOLON)) {
             try self.nextToken();
         }
 
@@ -146,7 +148,7 @@ const Parser = struct {
         while (!self.curTokenIs(token.SEMICOLON)) {
             try self.nextToken();
         }
-    
+
         return stmt;
     }
 
@@ -161,7 +163,7 @@ const Parser = struct {
             if (self.peekTokenIs(token.SEMICOLON)) {
                 try self.nextToken();
             }
-        } 
+        }
 
         return stmt;
     }
@@ -175,9 +177,22 @@ const Parser = struct {
             if (try prefixFn(self)) |expression| {
                 left_expression = expression;
             }
+        } else {
+            try self.noPrefixParseFnError(self.cur_token.token_type);
         }
 
         return left_expression;
+    }
+
+    fn noPrefixParseFnError(self: *Parser, token_type: token.TokenType) !void {
+        var error_array = try std.ArrayList([]const u8).initCapacity(self.arena.allocator(), self.errors.len);
+        try error_array.appendSlice(self.errors);
+        try error_array.append(try std.fmt.allocPrint(
+            self.arena.allocator(),
+            "no prefix parse function for {s} found\n",
+            .{token_type},
+        ));
+        self.errors = try error_array.toOwnedSlice();
     }
 
     fn nextToken(self: *Parser) !void {
@@ -240,6 +255,18 @@ fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     return expression;
 }
 
+fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    var expression: *ast.PrefixExpression = try self.arena.allocator().create(ast.PrefixExpression);
+    expression.token = self.cur_token;
+    expression.operator = try self.arena.allocator().dupe(u8, self.cur_token.literal);
+
+    try self.nextToken();
+
+    expression.right = try self.parseExpression(.PREFIX);
+
+    return ast.Expression.init(expression);
+}
+
 test "let statements" {
     const input =
         \\let x = 5;
@@ -274,7 +301,7 @@ fn testLetStatement(expected_name: []const u8, s: ast.Statement) !void {
 }
 
 test "parser errors for let statements" {
-    const input = 
+    const input =
         \\let x 5;
         \\let = 10;
         \\let 838383;
@@ -288,17 +315,17 @@ test "parser errors for let statements" {
     var program = try p.parseProgram();
     defer p.deinit(&program);
 
-    try expectErrors(&p, 3);
+    try expectErrors(&p, 4);
 }
 
 fn expectErrors(parser: *Parser, error_count: u32) !void {
     const errors = parser.getErrors();
 
     if (errors.len != error_count) {
-        std.debug.print("parser has {d} unexpected errors\n", .{ errors.len });
+        std.debug.print("parser has {d} unexpected errors\n", .{errors.len});
 
         for (errors) |err| {
-            std.debug.print("parser error: {s}", .{ err });
+            std.debug.print("parser error: {s}", .{err});
         }
     }
 
@@ -306,7 +333,7 @@ fn expectErrors(parser: *Parser, error_count: u32) !void {
 }
 
 test "return statements" {
-    const input = 
+    const input =
         \\return 5;
         \\return 10;
         \\return 993322;
@@ -373,4 +400,39 @@ test "integerer literal expression" {
         try std.testing.expectEqual(5, literal.value);
         try std.testing.expectEqualSlices(u8, "5", literal.tokenLiteral());
     }
+}
+
+test "prefix expressions" {
+    try testPrefixExpression("!5;", "!", 5);
+    try testPrefixExpression("-15;", "-", 15);
+}
+
+fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expected_value: i64) !void {
+    var l = lexer.Lexer.new(input);
+    defer l.deinit();
+
+    var p = try Parser.new(&l);
+
+    var program = try p.parseProgram();
+    defer p.deinit(&program);
+
+    try expectErrors(&p, 0);
+
+    try std.testing.expectEqual(program.statements.len, 1);
+
+    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(program.statements[0].ptr));
+    if (stmt.expression) |expression| {
+        const prefix_expression: *ast.PrefixExpression = @ptrCast(@alignCast(expression.ptr));
+        try std.testing.expectEqualSlices(u8, expected_operator, prefix_expression.operator);
+        try testIntegerLiteral(prefix_expression.right.?, expected_value);
+    }
+}
+
+fn testIntegerLiteral(integer_literal: ast.Expression, expected_value: i64) !void {
+    const literal: *ast.IntegerLiteral = @ptrCast(@alignCast(integer_literal.ptr));
+    try std.testing.expectEqual(expected_value, literal.value);
+
+    var buf: [10]u8 = undefined;
+    const expected_value_str = try std.fmt.bufPrint(&buf, "{d}", .{expected_value});
+    try std.testing.expectEqualSlices(u8, expected_value_str, literal.tokenLiteral());
 }

@@ -280,3 +280,31 @@ pub const IntegerLiteral = struct {
         return self.token.literal;
     }
 };
+
+pub const PrefixExpression = struct {
+    token: token.Token,
+    operator: []const u8,
+    right: ?Expression,
+
+    pub fn tokenLiteral(self: *PrefixExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: PrefixExpression) void {
+        _ = self;
+    }
+
+    pub fn string(self: *PrefixExpression, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "(",
+            self.operator,
+            if (self.right) |right_expression| right_expression.string(allocator) else "",
+            ")",
+        }) catch "";
+
+        return out;
+    }
+};
