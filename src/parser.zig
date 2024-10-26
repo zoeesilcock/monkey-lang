@@ -28,6 +28,8 @@ const Parser = struct {
     prefixParseFns: std.StringHashMap(prefixParseFn),
     infixParseFns: std.StringHashMap(infixParseFn),
 
+    precedences: std.StringHashMap(OperatorPrecedence),
+
     pub fn new(l: *lexer.Lexer) !Parser {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         var p = Parser{
@@ -36,12 +38,31 @@ const Parser = struct {
             .errors = &.{},
             .prefixParseFns = std.StringHashMap(prefixParseFn).init(arena.allocator()),
             .infixParseFns = std.StringHashMap(infixParseFn).init(arena.allocator()),
+            .precedences = std.StringHashMap(OperatorPrecedence).init(arena.allocator()),
         };
+
+        try p.precedences.put(token.EQ, .EQUALS);
+        try p.precedences.put(token.NOT_EQ, .EQUALS);
+        try p.precedences.put(token.LT, .LESSGREATER);
+        try p.precedences.put(token.GT, .LESSGREATER);
+        try p.precedences.put(token.PLUS, .SUM);
+        try p.precedences.put(token.MINUS, .SUM);
+        try p.precedences.put(token.SLASH, .PRODUCT);
+        try p.precedences.put(token.ASTERISK, .PRODUCT);
 
         try p.registerPrefix(token.IDENT, parseIdentifier);
         try p.registerPrefix(token.INT, parseIntegerLiteral);
         try p.registerPrefix(token.BANG, parsePrefixExpression);
         try p.registerPrefix(token.MINUS, parsePrefixExpression);
+
+        try p.registerInfix(token.PLUS, parseInfixExpression);
+        try p.registerInfix(token.MINUS, parseInfixExpression);
+        try p.registerInfix(token.SLASH, parseInfixExpression);
+        try p.registerInfix(token.ASTERISK, parseInfixExpression);
+        try p.registerInfix(token.EQ, parseInfixExpression);
+        try p.registerInfix(token.NOT_EQ, parseInfixExpression);
+        try p.registerInfix(token.LT, parseInfixExpression);
+        try p.registerInfix(token.GT, parseInfixExpression);
 
         try p.nextToken();
         try p.nextToken();
@@ -169,8 +190,6 @@ const Parser = struct {
     }
 
     fn parseExpression(self: *Parser, precedence: OperatorPrecedence) !?ast.Expression {
-        _ = precedence;
-
         var left_expression: ?ast.Expression = null;
 
         if (self.prefixParseFns.get(self.cur_token.token_type)) |prefixFn| {
@@ -179,6 +198,19 @@ const Parser = struct {
             }
         } else {
             try self.noPrefixParseFnError(self.cur_token.token_type);
+            return null;
+        }
+
+        while (!self.peekTokenIs(token.SEMICOLON) and @intFromEnum(precedence) < self.peekPrecedence()) {
+            if (self.infixParseFns.get(self.peek_token.token_type)) |infixFn| {
+                try self.nextToken();
+
+                if (try infixFn(self, left_expression.?)) |expression| {
+                    left_expression = expression;
+                }
+            } else {
+                return left_expression;
+            }
         }
 
         return left_expression;
@@ -231,6 +263,22 @@ const Parser = struct {
 
         self.errors = try error_array.toOwnedSlice();
     }
+
+    fn peekPrecedence(self: *Parser) u32 {
+        if (self.precedences.get(self.peek_token.token_type)) |precedence| {
+            return @intFromEnum(precedence);
+        }
+
+        return @intFromEnum(OperatorPrecedence.LOWEST);
+    }
+
+    fn curPrecedence(self: *Parser) u32 {
+        if (self.precedences.get(self.cur_token.token_type)) |precedence| {
+            return @intFromEnum(precedence);
+        }
+
+        return @intFromEnum(OperatorPrecedence.LOWEST);
+    }
 };
 
 fn parseIdentifier(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
@@ -261,10 +309,40 @@ fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression 
     expression.operator = try self.arena.allocator().dupe(u8, self.cur_token.literal);
 
     try self.nextToken();
-
     expression.right = try self.parseExpression(.PREFIX);
 
     return ast.Expression.init(expression);
+}
+
+fn parseInfixExpression(self: *Parser, left: ast.Expression) std.mem.Allocator.Error!?ast.Expression {
+    var expression: *ast.InfixExpression = try self.arena.allocator().create(ast.InfixExpression);
+    expression.token = self.cur_token;
+    expression.operator = try self.arena.allocator().dupe(u8, self.cur_token.literal);
+    expression.left = left;
+
+    const precedence = self.curPrecedence();
+    try self.nextToken();
+    expression.right = try self.parseExpression(@enumFromInt(precedence));
+
+    return ast.Expression.init(expression);
+}
+
+const TestSetup = struct {
+    parser: Parser,
+    lexer: lexer.Lexer,
+    program: ast.Program,
+
+    pub fn deinit(self: *TestSetup) void {
+        self.lexer.deinit();
+        self.parser.deinit(&self.program);
+    }
+};
+
+fn setupTestParser(input: []const u8) !TestSetup {
+    var l = lexer.Lexer.new(input);
+    var p = try Parser.new(&l);
+    const program = try p.parseProgram();
+    return TestSetup{ .parser = p, .lexer = l, .program = program };
 }
 
 test "let statements" {
@@ -273,23 +351,15 @@ test "let statements" {
         \\let y = 10;
         \\let foobar = 838383;
     ;
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
 
-    var l = lexer.Lexer.new(input);
-    defer l.deinit();
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(3, setup.program.statements.len);
 
-    var p = try Parser.new(&l);
-
-    var program = try p.parseProgram();
-    defer p.deinit(&program);
-
-    try expectErrors(&p, 0);
-
-    // TODO: The expressions should be in the value of the LetStatement.
-    try std.testing.expectEqual(3, program.statements.len);
-
-    try testLetStatement("x", program.statements[0]);
-    try testLetStatement("y", program.statements[1]);
-    try testLetStatement("foobar", program.statements[2]);
+    try testLetStatement("x", setup.program.statements[0]);
+    try testLetStatement("y", setup.program.statements[1]);
+    try testLetStatement("foobar", setup.program.statements[2]);
 }
 
 fn testLetStatement(expected_name: []const u8, s: ast.Statement) !void {
@@ -307,15 +377,10 @@ test "parser errors for let statements" {
         \\let 838383;
     ;
 
-    var l = lexer.Lexer.new(input);
-    defer l.deinit();
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
 
-    var p = try Parser.new(&l);
-
-    var program = try p.parseProgram();
-    defer p.deinit(&program);
-
-    try expectErrors(&p, 4);
+    try expectErrors(&setup.parser, 4);
 }
 
 fn expectErrors(parser: *Parser, error_count: u32) !void {
@@ -339,16 +404,11 @@ test "return statements" {
         \\return 993322;
     ;
 
-    var l = lexer.Lexer.new(input);
-    defer l.deinit();
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
 
-    var p = try Parser.new(&l);
-    var program = try p.parseProgram();
-    defer p.deinit(&program);
-
-    try expectErrors(&p, 0);
-
-    try std.testing.expectEqual(3, program.statements.len);
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(3, setup.program.statements.len);
 }
 
 fn testReturnStatement(s: ast.Statement) !void {
@@ -359,19 +419,13 @@ fn testReturnStatement(s: ast.Statement) !void {
 test "identifier expression" {
     const input = "foobar;";
 
-    var l = lexer.Lexer.new(input);
-    defer l.deinit();
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
 
-    var p = try Parser.new(&l);
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
 
-    var program = try p.parseProgram();
-    defer p.deinit(&program);
-
-    try expectErrors(&p, 0);
-
-    try std.testing.expectEqual(program.statements.len, 1);
-
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
     if (stmt.expression) |expression| {
         const ident: *ast.Identifier = @ptrCast(@alignCast(expression.ptr));
         try std.testing.expectEqualSlices(u8, "foobar", ident.value);
@@ -382,19 +436,13 @@ test "identifier expression" {
 test "integerer literal expression" {
     const input = "5;";
 
-    var l = lexer.Lexer.new(input);
-    defer l.deinit();
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
 
-    var p = try Parser.new(&l);
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
 
-    var program = try p.parseProgram();
-    defer p.deinit(&program);
-
-    try expectErrors(&p, 0);
-
-    try std.testing.expectEqual(program.statements.len, 1);
-
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
     if (stmt.expression) |expression| {
         const literal: *ast.IntegerLiteral = @ptrCast(@alignCast(expression.ptr));
         try std.testing.expectEqual(5, literal.value);
@@ -408,19 +456,13 @@ test "prefix expressions" {
 }
 
 fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expected_value: i64) !void {
-    var l = lexer.Lexer.new(input);
-    defer l.deinit();
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
 
-    var p = try Parser.new(&l);
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
 
-    var program = try p.parseProgram();
-    defer p.deinit(&program);
-
-    try expectErrors(&p, 0);
-
-    try std.testing.expectEqual(program.statements.len, 1);
-
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
     if (stmt.expression) |expression| {
         const prefix_expression: *ast.PrefixExpression = @ptrCast(@alignCast(expression.ptr));
         try std.testing.expectEqualSlices(u8, expected_operator, prefix_expression.operator);
@@ -435,4 +477,91 @@ fn testIntegerLiteral(integer_literal: ast.Expression, expected_value: i64) !voi
     var buf: [10]u8 = undefined;
     const expected_value_str = try std.fmt.bufPrint(&buf, "{d}", .{expected_value});
     try std.testing.expectEqualSlices(u8, expected_value_str, literal.tokenLiteral());
+}
+
+test "infix expressions" {
+    try testInfixExpression("5 + 5;", 5, "+", 5);
+    try testInfixExpression("5 - 5;", 5, "-", 5);
+    try testInfixExpression("5 * 5;", 5, "*", 5);
+    try testInfixExpression("5 / 5;", 5, "/", 5);
+    try testInfixExpression("5 > 5;", 5, ">", 5);
+    try testInfixExpression("5 < 5;", 5, "<", 5);
+    try testInfixExpression("5 == 5;", 5, "==", 5);
+    try testInfixExpression("5 != 5;", 5, "!=", 5);
+}
+
+fn testInfixExpression(input: []const u8, left_value: i64, operator: []const u8, right_value: i64) !void {
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    if (stmt.expression) |expression| {
+        const infix_expression: *ast.InfixExpression = @ptrCast(@alignCast(expression.ptr));
+        try testIntegerLiteral(infix_expression.left.?, left_value);
+        try std.testing.expectEqualSlices(u8, operator, infix_expression.operator);
+        try testIntegerLiteral(infix_expression.right.?, right_value);
+    }
+}
+
+test "operator precedence parsing" {
+    try testOperatorPrecedenceParsing(
+        "-a * b",
+        "((-a) * b)",
+    );
+    try testOperatorPrecedenceParsing(
+        "!-a",
+        "(!(-a))",
+    );
+    try testOperatorPrecedenceParsing(
+        "a + b + c",
+        "((a + b) + c)",
+    );
+    try testOperatorPrecedenceParsing(
+        "a + b - c",
+        "((a + b) - c)",
+    );
+    try testOperatorPrecedenceParsing(
+        "a * b * c",
+        "((a * b) * c)",
+    );
+    try testOperatorPrecedenceParsing(
+        "a * b / c",
+        "((a * b) / c)",
+    );
+    try testOperatorPrecedenceParsing(
+        "a + b / c",
+        "(a + (b / c))",
+    );
+    try testOperatorPrecedenceParsing(
+        "a + b * c + d / e - f",
+        "(((a + (b * c)) + (d / e)) - f)",
+    );
+    try testOperatorPrecedenceParsing(
+        "3 + 4; -5 * 5",
+        "(3 + 4)((-5) * 5)",
+    );
+    try testOperatorPrecedenceParsing(
+        "5 > 4 == 3 < 4",
+        "((5 > 4) == (3 < 4))",
+    );
+    try testOperatorPrecedenceParsing(
+        "5 < 4 != 3 > 4",
+        "((5 < 4) != (3 > 4))",
+    );
+    try testOperatorPrecedenceParsing(
+        "3 + 4 * 5 == 3 * 1 + 4 * 5",
+        "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+    );
+}
+
+fn testOperatorPrecedenceParsing(input: []const u8, expected: []const u8) !void {
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+
+    try std.testing.expectEqualSlices(u8, expected, setup.program.string(setup.parser.arena.allocator()));
 }

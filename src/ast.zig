@@ -308,3 +308,35 @@ pub const PrefixExpression = struct {
         return out;
     }
 };
+
+pub const InfixExpression = struct {
+    token: token.Token,
+    left: ?Expression,
+    operator: []const u8,
+    right: ?Expression,
+
+    pub fn tokenLiteral(self: *InfixExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: InfixExpression) void {
+        _ = self;
+    }
+
+    pub fn string(self: *InfixExpression, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "(",
+            if (self.left) |left_expression| left_expression.string(allocator) else "",
+            " ",
+            self.operator,
+            " ",
+            if (self.right) |right_expression| right_expression.string(allocator) else "",
+            ")",
+        }) catch "";
+
+        return out;
+    }
+};
