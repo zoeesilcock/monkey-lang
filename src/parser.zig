@@ -163,9 +163,10 @@ const Parser = struct {
     fn parseReturnStatement(self: *Parser) !?*ast.ReturnStatement {
         var stmt: *ast.ReturnStatement = try self.arena.allocator().create(ast.ReturnStatement);
         stmt.token = self.cur_token;
-        stmt.return_value = null;
 
         try self.nextToken();
+
+        stmt.return_value = try self.parseExpression(.LOWEST);
 
         while (!self.curTokenIs(token.SEMICOLON)) {
             try self.nextToken();
@@ -361,11 +362,40 @@ fn setupTestParser(input: []const u8) !TestSetup {
     return TestSetup{ .parser = p, .lexer = l, .program = program };
 }
 
+const TestValueTypes = enum {
+    int_value,
+    bool_value,
+    string_value,
+};
+
+const TestValue = union(TestValueTypes) {
+    int_value: i64,
+    bool_value: bool,
+    string_value: []const u8,
+};
+
+fn testLiteralExpression(expected_value: TestValue, expression: ast.Expression) !void {
+    switch (expected_value) {
+        .int_value => |value| try testIntegerLiteral(value, expression),
+        .bool_value => |value| try testIntegerLiteral(@intFromBool(value), expression),
+        .string_value => |value| try testIdentifier(value, expression),
+    }
+}
+
+fn testIntegerLiteral(expected_value: i64, integer_literal: ast.Expression) !void {
+    const literal: *ast.IntegerLiteral = @ptrCast(@alignCast(integer_literal.ptr));
+    try std.testing.expectEqual(expected_value, literal.value);
+
+    var buf: [10]u8 = undefined;
+    const expected_value_str = try std.fmt.bufPrint(&buf, "{d}", .{expected_value});
+    try std.testing.expectEqualSlices(u8, expected_value_str, literal.tokenLiteral());
+}
+
 test "let statements" {
     const input =
         \\let x = 5;
         \\let y = 10;
-        \\let foobar = 838383;
+        \\let foobar = y;
     ;
     var setup = try setupTestParser(input);
     defer setup.deinit();
@@ -373,17 +403,19 @@ test "let statements" {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(3, setup.program.statements.len);
 
-    try testLetStatement("x", setup.program.statements[0]);
-    try testLetStatement("y", setup.program.statements[1]);
-    try testLetStatement("foobar", setup.program.statements[2]);
+    try testLetStatement("x", .{ .int_value = 5 }, setup.program.statements[0]);
+    try testLetStatement("y", .{ .int_value = 10 }, setup.program.statements[1]);
+    try testLetStatement("foobar", .{ .string_value = "y" }, setup.program.statements[2]);
 }
 
-fn testLetStatement(expected_name: []const u8, s: ast.Statement) !void {
+fn testLetStatement(expected_name: []const u8, expected_value: TestValue, s: ast.Statement) !void {
     try std.testing.expectEqualSlices(u8, "let", s.tokenLiteral());
 
     const let_stmt: *const ast.LetStatement = @ptrCast(@alignCast(s.ptr));
     try std.testing.expectEqualSlices(u8, expected_name, let_stmt.name.value);
     try std.testing.expectEqualSlices(u8, expected_name, let_stmt.name.tokenLiteral());
+
+    try testLiteralExpression(expected_value, let_stmt.value.?);
 }
 
 test "parser errors for let statements" {
@@ -425,11 +457,16 @@ test "return statements" {
 
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(3, setup.program.statements.len);
+
+    try testReturnStatement(.{ .int_value = 5 }, setup.program.statements[0]);
+    try testReturnStatement(.{ .int_value = 10 }, setup.program.statements[1]);
+    try testReturnStatement(.{ .int_value = 993322 }, setup.program.statements[2]);
 }
 
-fn testReturnStatement(s: ast.Statement) !void {
-    const return_stmt: *const ast.ReturnStatement = @ptrCast(@alignCast(s.ptr));
-    try std.testing.expectEqualSlices(u8, "return", return_stmt.name.tokenLiteral());
+fn testReturnStatement(expected_value: TestValue, s: ast.Statement) !void {
+    var return_stmt: *ast.ReturnStatement = @ptrCast(@alignCast(s.ptr));
+    try std.testing.expectEqualSlices(u8, "return", return_stmt.tokenLiteral());
+    try testLiteralExpression(expected_value, return_stmt.return_value.?);
 }
 
 test "identifier expression" {
@@ -443,10 +480,15 @@ test "identifier expression" {
 
     const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
     if (stmt.expression) |expression| {
-        const ident: *ast.Identifier = @ptrCast(@alignCast(expression.ptr));
-        try std.testing.expectEqualSlices(u8, "foobar", ident.value);
-        try std.testing.expectEqualSlices(u8, "foobar", ident.tokenLiteral());
+        try testIdentifier("foobar", expression);
     }
+}
+
+fn testIdentifier(expected_value: []const u8, expression: ast.Expression) !void {
+    const ident: *ast.Identifier = @ptrCast(@alignCast(expression.ptr));
+
+    try std.testing.expectEqualSlices(u8, expected_value, ident.value);
+    try std.testing.expectEqualSlices(u8, expected_value, ident.tokenLiteral());
 }
 
 test "integerer literal expression" {
@@ -467,11 +509,11 @@ test "integerer literal expression" {
 }
 
 test "prefix expressions" {
-    try testPrefixExpression("!5;", "!", 5);
-    try testPrefixExpression("-15;", "-", 15);
+    try testPrefixExpression("!5;", "!", .{ .int_value = 5 });
+    try testPrefixExpression("-15;", "-",.{ .int_value = 15 });
 }
 
-fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expected_value: i64) !void {
+fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expected_value: TestValue) !void {
     var setup = try setupTestParser(input);
     defer setup.deinit();
 
@@ -482,31 +524,22 @@ fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expect
     if (stmt.expression) |expression| {
         const prefix_expression: *ast.PrefixExpression = @ptrCast(@alignCast(expression.ptr));
         try std.testing.expectEqualSlices(u8, expected_operator, prefix_expression.operator);
-        try testIntegerLiteral(prefix_expression.right.?, expected_value);
+        try testLiteralExpression(expected_value, prefix_expression.right.?);
     }
 }
 
-fn testIntegerLiteral(integer_literal: ast.Expression, expected_value: i64) !void {
-    const literal: *ast.IntegerLiteral = @ptrCast(@alignCast(integer_literal.ptr));
-    try std.testing.expectEqual(expected_value, literal.value);
-
-    var buf: [10]u8 = undefined;
-    const expected_value_str = try std.fmt.bufPrint(&buf, "{d}", .{expected_value});
-    try std.testing.expectEqualSlices(u8, expected_value_str, literal.tokenLiteral());
-}
-
 test "infix expressions" {
-    try testInfixExpression("5 + 5;", 5, "+", 5);
-    try testInfixExpression("5 - 5;", 5, "-", 5);
-    try testInfixExpression("5 * 5;", 5, "*", 5);
-    try testInfixExpression("5 / 5;", 5, "/", 5);
-    try testInfixExpression("5 > 5;", 5, ">", 5);
-    try testInfixExpression("5 < 5;", 5, "<", 5);
-    try testInfixExpression("5 == 5;", 5, "==", 5);
-    try testInfixExpression("5 != 5;", 5, "!=", 5);
+    try testParsingInfixExpression("5 + 5;", .{ .int_value = 5 }, "+", .{ .int_value = 5 });
+    try testParsingInfixExpression("5 - 5;", .{ .int_value = 5 }, "-", .{ .int_value = 5 });
+    try testParsingInfixExpression("5 * 5;", .{ .int_value = 5 }, "*", .{ .int_value = 5 });
+    try testParsingInfixExpression("5 / 5;", .{ .int_value = 5 }, "/", .{ .int_value = 5 });
+    try testParsingInfixExpression("5 > 5;", .{ .int_value = 5 }, ">", .{ .int_value = 5 });
+    try testParsingInfixExpression("5 < 5;", .{ .int_value = 5 }, "<", .{ .int_value = 5 });
+    try testParsingInfixExpression("5 == 5;", .{ .int_value = 5 }, "==", .{ .int_value = 5 });
+    try testParsingInfixExpression("5 != 5;", .{ .int_value = 5 }, "!=", .{ .int_value = 5 });
 }
 
-fn testInfixExpression(input: []const u8, left_value: i64, operator: []const u8, right_value: i64) !void {
+fn testParsingInfixExpression(input: []const u8, left_value: TestValue, operator: []const u8, right_value: TestValue) !void {
     var setup = try setupTestParser(input);
     defer setup.deinit();
 
@@ -515,11 +548,15 @@ fn testInfixExpression(input: []const u8, left_value: i64, operator: []const u8,
 
     const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
     if (stmt.expression) |expression| {
-        const infix_expression: *ast.InfixExpression = @ptrCast(@alignCast(expression.ptr));
-        try testIntegerLiteral(infix_expression.left.?, left_value);
-        try std.testing.expectEqualSlices(u8, operator, infix_expression.operator);
-        try testIntegerLiteral(infix_expression.right.?, right_value);
+        try testInfixEpression(left_value, operator, right_value, expression);
     }
+}
+
+fn testInfixEpression(left_value: TestValue, operator: []const u8, right_value: TestValue, expression: ast.Expression) !void {
+    const infix_expression: *ast.InfixExpression = @ptrCast(@alignCast(expression.ptr));
+    try testLiteralExpression(left_value, infix_expression.left.?);
+    try std.testing.expectEqualSlices(u8, operator, infix_expression.operator);
+    try testLiteralExpression(right_value, infix_expression.right.?);
 }
 
 test "operator precedence parsing" {
