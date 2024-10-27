@@ -188,6 +188,33 @@ pub const ExpressionStatement = struct {
     }
 };
 
+pub const BlockStatement = struct {
+    token: token.Token,
+    statements: []const Statement,
+
+    pub fn tokenLiteral(self: *BlockStatement) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn statementNode(self: *BlockStatement) void {
+        _ = self;
+    }
+
+    pub fn string(self: *BlockStatement, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        for (self.statements) |stmt| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                stmt.string(allocator),
+            }) catch "";
+        }
+
+        return out;
+    }
+};
+
+
 pub const Expression = struct {
     ptr: *anyopaque,
     vtab: *const VTab,
@@ -353,6 +380,44 @@ pub const InfixExpression = struct {
             if (self.right) |right_expression| right_expression.string(allocator) else "",
             ")",
         }) catch "";
+
+        return out;
+    }
+};
+
+pub const IfExpression = struct {
+    token: token.Token,
+    condition: ?Expression,
+    consequence: ?*BlockStatement,
+    alternative: ?*BlockStatement,
+
+    pub fn tokenLiteral(self: *IfExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: IfExpression) void {
+        _ = self;
+    }
+
+    pub fn string(self: *IfExpression, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "if",
+            if (self.condition) |condition| condition.string(allocator) else "",
+            " ",
+            if (self.consequence) |consequence| consequence.string(allocator) else "",
+            " ",
+        }) catch "";
+
+        if (self.alternative) |alternative| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                "else",
+                alternative.string(allocator),
+            }) catch "";
+        }
 
         return out;
     }

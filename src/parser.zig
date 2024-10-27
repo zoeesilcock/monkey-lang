@@ -58,6 +58,7 @@ const Parser = struct {
         try p.registerPrefix(token.TRUE, parseBooleanLiteral);
         try p.registerPrefix(token.FALSE, parseBooleanLiteral);
         try p.registerPrefix(token.LPAREN, parseGroupedExpression);
+        try p.registerPrefix(token.IF, parseIfExpression);
 
         try p.registerInfix(token.PLUS, parseInfixExpression);
         try p.registerInfix(token.MINUS, parseInfixExpression);
@@ -176,6 +177,26 @@ const Parser = struct {
         }
 
         return stmt;
+    }
+
+    fn parseBlockStatement(self: *Parser) !?*ast.BlockStatement {
+        var block: *ast.BlockStatement = try self.arena.allocator().create(ast.BlockStatement);
+        block.token = self.cur_token;
+
+        try self.nextToken();
+
+        var statements = std.ArrayList(ast.Statement).init(self.arena.allocator());
+        while (!self.curTokenIs(token.RBRACE) and !self.curTokenIs(token.EOF)) {
+            if (try self.parseStatement()) |stmt| {
+                try statements.append(stmt);
+            }
+
+            try self.nextToken();
+        }
+
+        block.statements = try statements.toOwnedSlice();
+
+        return block;
     }
 
     fn parseExpressionStatement(self: *Parser) !?*ast.ExpressionStatement {
@@ -335,6 +356,41 @@ fn parseGroupedExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression
     }
 
     return expression;
+}
+
+fn parseIfExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    var expression: *ast.IfExpression = try self.arena.allocator().create(ast.IfExpression);
+    expression.token = self.cur_token;
+
+    if (!try self.expectPeek(token.LPAREN)) {
+        return null;
+    }
+
+    try self.nextToken();
+    expression.condition = try self.parseExpression(.LOWEST);
+
+    if (!try self.expectPeek(token.RPAREN)) {
+        return null;
+    }
+
+    if (!try self.expectPeek(token.LBRACE)) {
+        return null;
+    }
+
+    expression.consequence = try self.parseBlockStatement();
+    expression.alternative = null;
+
+    if (self.peekTokenIs(token.ELSE)) {
+        try self.nextToken();
+
+        if (!try self.expectPeek(token.LBRACE)) {
+            return null;
+        }
+
+        expression.alternative = try self.parseBlockStatement();
+    }
+
+    return ast.Expression.init(expression);
 }
 
 fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
@@ -713,4 +769,46 @@ fn testOperatorPrecedenceParsing(input: []const u8, expected: []const u8) !void 
     try expectErrors(&setup.parser, 0);
 
     try std.testing.expectEqualSlices(u8, expected, setup.program.string(setup.parser.arena.allocator()));
+}
+
+test "if expression" {
+    const input = "if (x < y) { x }";
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const expression: *const ast.IfExpression = @ptrCast(@alignCast(stmt.expression.?.ptr));
+
+    try testInfixEpression(.{ .string_value = "x" }, "<", .{ .string_value = "y" }, expression.condition.?);
+    try std.testing.expectEqual(1, expression.consequence.?.statements.len);
+
+    const consequence: *const ast.ExpressionStatement = @ptrCast(@alignCast(expression.consequence.?.statements[0].ptr));
+    try testIdentifier("x", consequence.expression.?);
+
+    try std.testing.expectEqual(null, expression.alternative);
+}
+
+test "if else expression" {
+    const input = "if (x < y) { x } else { y }";
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const expression: *const ast.IfExpression = @ptrCast(@alignCast(stmt.expression.?.ptr));
+
+    try testInfixEpression(.{ .string_value = "x" }, "<", .{ .string_value = "y" }, expression.condition.?);
+    try std.testing.expectEqual(1, expression.consequence.?.statements.len);
+
+    const consequence: *const ast.ExpressionStatement = @ptrCast(@alignCast(expression.consequence.?.statements[0].ptr));
+    try testIdentifier("x", consequence.expression.?);
+
+    try std.testing.expectEqual(1, expression.alternative.?.statements.len);
+    const alternative: *const ast.ExpressionStatement = @ptrCast(@alignCast(expression.alternative.?.statements[0].ptr));
+    try testIdentifier("y", alternative.expression.?);
 }
