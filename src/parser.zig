@@ -57,6 +57,7 @@ const Parser = struct {
         try p.registerPrefix(token.MINUS, parsePrefixExpression);
         try p.registerPrefix(token.TRUE, parseBooleanLiteral);
         try p.registerPrefix(token.FALSE, parseBooleanLiteral);
+        try p.registerPrefix(token.LPAREN, parseGroupedExpression);
 
         try p.registerInfix(token.PLUS, parseInfixExpression);
         try p.registerInfix(token.MINUS, parseInfixExpression);
@@ -322,6 +323,18 @@ fn parseBooleanLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     lit.value = self.curTokenIs(token.TRUE);
 
     return ast.Expression.init(lit);
+}
+
+fn parseGroupedExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    try self.nextToken();
+
+    var expression: ?ast.Expression = try self.parseExpression(.LOWEST);
+
+    if (!try self.expectPeek(token.RPAREN)) {
+        expression = null;
+    }
+
+    return expression;
 }
 
 fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
@@ -666,6 +679,30 @@ test "operator precedence parsing" {
     try testOperatorPrecedenceParsing(
         "3 < 5 == true",
         "((3 < 5) == true)",
+    );
+    try testOperatorPrecedenceParsing(
+        "1 + (2 + 3) + 4",
+        "((1 + (2 + 3)) + 4)",
+    );
+    try testOperatorPrecedenceParsing(
+        "(5 + 5) * 2",
+        "((5 + 5) * 2)",
+    );
+    try testOperatorPrecedenceParsing(
+        "2 / (5 + 5)",
+        "(2 / (5 + 5))",
+    );
+    try testOperatorPrecedenceParsing(
+        "(5 + 5) * 2 * (5 + 5)",
+        "(((5 + 5) * 2) * (5 + 5))",
+    );
+    try testOperatorPrecedenceParsing(
+        "-(5 + 5)",
+        "(-(5 + 5))",
+    );
+    try testOperatorPrecedenceParsing(
+        "!(true == true)",
+        "(!(true == true))",
     );
 }
 
