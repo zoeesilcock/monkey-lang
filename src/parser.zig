@@ -2,6 +2,7 @@ const std = @import("std");
 const ast = @import("ast.zig");
 const lexer = @import("lexer.zig");
 const token = @import("token.zig");
+const tracer = @import("parser_tracer.zig");
 
 const prefixParseFn = *const fn (self: *Parser) std.mem.Allocator.Error!?ast.Expression;
 const infixParseFn = *const fn (self: *Parser, expression: ast.Expression) std.mem.Allocator.Error!?ast.Expression;
@@ -174,6 +175,9 @@ const Parser = struct {
     }
 
     fn parseExpressionStatement(self: *Parser) !?*ast.ExpressionStatement {
+        tracer.trace(@src().fn_name);
+        defer tracer.untrace(@src().fn_name);
+
         var stmt: ?*ast.ExpressionStatement = null;
 
         if (try self.parseExpression(.LOWEST)) |expression| {
@@ -190,6 +194,9 @@ const Parser = struct {
     }
 
     fn parseExpression(self: *Parser, precedence: OperatorPrecedence) !?ast.Expression {
+        tracer.trace(@src().fn_name);
+        defer tracer.untrace(@src().fn_name);
+
         var left_expression: ?ast.Expression = null;
 
         if (self.prefixParseFns.get(self.cur_token.token_type)) |prefixFn| {
@@ -290,6 +297,9 @@ fn parseIdentifier(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 }
 
 fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var expression: ?ast.Expression = null;
 
     const opt_value: ?i64 = std.fmt.parseInt(i64, self.cur_token.literal, 10) catch null;
@@ -304,6 +314,9 @@ fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 }
 
 fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var expression: *ast.PrefixExpression = try self.arena.allocator().create(ast.PrefixExpression);
     expression.token = self.cur_token;
     expression.operator = try self.arena.allocator().dupe(u8, self.cur_token.literal);
@@ -315,6 +328,9 @@ fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression 
 }
 
 fn parseInfixExpression(self: *Parser, left: ast.Expression) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var expression: *ast.InfixExpression = try self.arena.allocator().create(ast.InfixExpression);
     expression.token = self.cur_token;
     expression.operator = try self.arena.allocator().dupe(u8, self.cur_token.literal);
