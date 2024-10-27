@@ -55,6 +55,8 @@ const Parser = struct {
         try p.registerPrefix(token.INT, parseIntegerLiteral);
         try p.registerPrefix(token.BANG, parsePrefixExpression);
         try p.registerPrefix(token.MINUS, parsePrefixExpression);
+        try p.registerPrefix(token.TRUE, parseBooleanLiteral);
+        try p.registerPrefix(token.FALSE, parseBooleanLiteral);
 
         try p.registerInfix(token.PLUS, parseInfixExpression);
         try p.registerInfix(token.MINUS, parseInfixExpression);
@@ -314,6 +316,14 @@ fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     return expression;
 }
 
+fn parseBooleanLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    var lit: *ast.BooleanLiteral = try self.arena.allocator().create(ast.BooleanLiteral);
+    lit.token = self.cur_token;
+    lit.value = self.curTokenIs(token.TRUE);
+
+    return ast.Expression.init(lit);
+}
+
 fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
@@ -377,7 +387,7 @@ const TestValue = union(TestValueTypes) {
 fn testLiteralExpression(expected_value: TestValue, expression: ast.Expression) !void {
     switch (expected_value) {
         .int_value => |value| try testIntegerLiteral(value, expression),
-        .bool_value => |value| try testIntegerLiteral(@intFromBool(value), expression),
+        .bool_value => |value| try testBooleanLiteral(value, expression),
         .string_value => |value| try testIdentifier(value, expression),
     }
 }
@@ -388,6 +398,15 @@ fn testIntegerLiteral(expected_value: i64, integer_literal: ast.Expression) !voi
 
     var buf: [10]u8 = undefined;
     const expected_value_str = try std.fmt.bufPrint(&buf, "{d}", .{expected_value});
+    try std.testing.expectEqualSlices(u8, expected_value_str, literal.tokenLiteral());
+}
+
+fn testBooleanLiteral(expected_value: bool, boolean_literal: ast.Expression) !void {
+    const literal: *ast.BooleanLiteral = @ptrCast(@alignCast(boolean_literal.ptr));
+    try std.testing.expectEqual(expected_value, literal.value);
+
+    var buf: [10]u8 = undefined;
+    const expected_value_str = try std.fmt.bufPrint(&buf, "{s}", .{ if (expected_value) "true" else "false"});
     try std.testing.expectEqualSlices(u8, expected_value_str, literal.tokenLiteral());
 }
 
@@ -491,7 +510,7 @@ fn testIdentifier(expected_value: []const u8, expression: ast.Expression) !void 
     try std.testing.expectEqualSlices(u8, expected_value, ident.tokenLiteral());
 }
 
-test "integerer literal expression" {
+test "integer literal expression" {
     const input = "5;";
 
     var setup = try setupTestParser(input);
@@ -508,9 +527,30 @@ test "integerer literal expression" {
     }
 }
 
+test "boolean literal expression" {
+    try testBooleanExpression("true;", true);
+    try testBooleanExpression("false;", false);
+}
+
+fn testBooleanExpression(input: []const u8, expected_value: bool) !void {
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    if (stmt.expression) |expression| {
+        const literal: *ast.BooleanLiteral = @ptrCast(@alignCast(expression.ptr));
+        try std.testing.expectEqual(expected_value, literal.value);
+    }
+}
+
 test "prefix expressions" {
     try testPrefixExpression("!5;", "!", .{ .int_value = 5 });
     try testPrefixExpression("-15;", "-",.{ .int_value = 15 });
+    try testPrefixExpression("!true;", "!",.{ .bool_value = true });
+    try testPrefixExpression("!false;", "!",.{ .bool_value = false });
 }
 
 fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expected_value: TestValue) !void {
@@ -537,6 +577,9 @@ test "infix expressions" {
     try testParsingInfixExpression("5 < 5;", .{ .int_value = 5 }, "<", .{ .int_value = 5 });
     try testParsingInfixExpression("5 == 5;", .{ .int_value = 5 }, "==", .{ .int_value = 5 });
     try testParsingInfixExpression("5 != 5;", .{ .int_value = 5 }, "!=", .{ .int_value = 5 });
+    try testParsingInfixExpression("true == true", .{ .bool_value = true }, "==", .{ .bool_value = true });
+    try testParsingInfixExpression("true != false", .{ .bool_value = true }, "!=", .{ .bool_value = false });
+    try testParsingInfixExpression("false == false", .{ .bool_value = false }, "==", .{ .bool_value = false });
 }
 
 fn testParsingInfixExpression(input: []const u8, left_value: TestValue, operator: []const u8, right_value: TestValue) !void {
@@ -607,6 +650,22 @@ test "operator precedence parsing" {
     try testOperatorPrecedenceParsing(
         "3 + 4 * 5 == 3 * 1 + 4 * 5",
         "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+    );
+    try testOperatorPrecedenceParsing(
+        "true",
+        "true",
+    );
+    try testOperatorPrecedenceParsing(
+        "false",
+        "false",
+    );
+    try testOperatorPrecedenceParsing(
+        "3 > 5 == false",
+        "((3 > 5) == false)",
+    );
+    try testOperatorPrecedenceParsing(
+        "3 < 5 == true",
+        "((3 < 5) == true)",
     );
 }
 

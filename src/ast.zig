@@ -280,6 +280,24 @@ pub const IntegerLiteral = struct {
     }
 };
 
+pub const BooleanLiteral = struct {
+    token: token.Token,
+    value: bool,
+
+    pub fn tokenLiteral(self: *BooleanLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: BooleanLiteral) void {
+        _ = self;
+    }
+
+    pub fn string(self: *BooleanLiteral, allocator: std.mem.Allocator) []const u8 {
+        _ = allocator;
+        return self.token.literal;
+    }
+};
+
 pub const PrefixExpression = struct {
     token: token.Token,
     operator: []const u8,
