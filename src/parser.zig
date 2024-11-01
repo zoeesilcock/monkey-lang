@@ -59,6 +59,7 @@ const Parser = struct {
         try p.registerPrefix(token.FALSE, parseBooleanLiteral);
         try p.registerPrefix(token.LPAREN, parseGroupedExpression);
         try p.registerPrefix(token.IF, parseIfExpression);
+        try p.registerPrefix(token.FUNCTION, parseFunctionLiteral);
 
         try p.registerInfix(token.PLUS, parseInfixExpression);
         try p.registerInfix(token.MINUS, parseInfixExpression);
@@ -248,6 +249,38 @@ const Parser = struct {
         return left_expression;
     }
 
+    fn parseFunctionParameters(self: *Parser) !?[]*ast.Identifier {
+        var identifiers = std.ArrayList(*ast.Identifier).init(self.arena.allocator());
+
+        if (self.peekTokenIs(token.RPAREN)) {
+            try self.nextToken();
+            return try identifiers.toOwnedSlice();
+        }
+
+        try self.nextToken();
+
+        var identifier: *ast.Identifier = try self.arena.allocator().create(ast.Identifier);
+        identifier.token = self.cur_token;
+        identifier.value = self.cur_token.literal;
+        try identifiers.append(identifier);
+
+        while (self.peekTokenIs(token.COMMA)) {
+            try self.nextToken();
+            try self.nextToken();
+
+            identifier = try self.arena.allocator().create(ast.Identifier);
+            identifier.token = self.cur_token;
+            identifier.value = self.cur_token.literal;
+            try identifiers.append(identifier);
+        }
+
+        if (!try self.expectPeek(token.RPAREN)) {
+            return null;
+        }
+
+        return try identifiers.toOwnedSlice();
+    }
+
     fn noPrefixParseFnError(self: *Parser, token_type: token.TokenType) !void {
         var error_array = try std.ArrayList([]const u8).initCapacity(self.arena.allocator(), self.errors.len);
         try error_array.appendSlice(self.errors);
@@ -423,6 +456,29 @@ fn parseInfixExpression(self: *Parser, left: ast.Expression) std.mem.Allocator.E
     return ast.Expression.init(expression);
 }
 
+fn parseFunctionLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    var lit: *ast.FunctionLiteral = try self.arena.allocator().create(ast.FunctionLiteral);
+    lit.token = self.cur_token;
+    lit.body = null;
+
+    if (!try self.expectPeek(token.LPAREN)) {
+        return null;
+    }
+
+    lit.parameters = try self.parseFunctionParameters() orelse &.{};
+
+    if (!try self.expectPeek(token.LBRACE)) {
+        return null;
+    }
+
+    if (try self.parseBlockStatement()) |body| {
+        lit.body = body;
+    }
+
+    return ast.Expression.init(lit);
+
+}
+
 const TestSetup = struct {
     parser: Parser,
     lexer: lexer.Lexer,
@@ -475,7 +531,7 @@ fn testBooleanLiteral(expected_value: bool, boolean_literal: ast.Expression) !vo
     try std.testing.expectEqual(expected_value, literal.value);
 
     var buf: [10]u8 = undefined;
-    const expected_value_str = try std.fmt.bufPrint(&buf, "{s}", .{ if (expected_value) "true" else "false"});
+    const expected_value_str = try std.fmt.bufPrint(&buf, "{s}", .{if (expected_value) "true" else "false"});
     try std.testing.expectEqualSlices(u8, expected_value_str, literal.tokenLiteral());
 }
 
@@ -617,9 +673,9 @@ fn testBooleanExpression(input: []const u8, expected_value: bool) !void {
 
 test "prefix expressions" {
     try testPrefixExpression("!5;", "!", .{ .int_value = 5 });
-    try testPrefixExpression("-15;", "-",.{ .int_value = 15 });
-    try testPrefixExpression("!true;", "!",.{ .bool_value = true });
-    try testPrefixExpression("!false;", "!",.{ .bool_value = false });
+    try testPrefixExpression("-15;", "-", .{ .int_value = 15 });
+    try testPrefixExpression("!true;", "!", .{ .bool_value = true });
+    try testPrefixExpression("!false;", "!", .{ .bool_value = false });
 }
 
 fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expected_value: TestValue) !void {
@@ -811,4 +867,50 @@ test "if else expression" {
     try std.testing.expectEqual(1, expression.alternative.?.statements.len);
     const alternative: *const ast.ExpressionStatement = @ptrCast(@alignCast(expression.alternative.?.statements[0].ptr));
     try testIdentifier("y", alternative.expression.?);
+}
+
+test "function literals" {
+    const input = "fn(x, y) { x + y; }";
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const function_literal: *const ast.FunctionLiteral = @ptrCast(@alignCast(stmt.expression.?.ptr));
+
+    try std.testing.expectEqual(2, function_literal.parameters.len);
+
+    try testLiteralExpression(.{ .string_value = "x" }, ast.Expression.init(function_literal.parameters[0]));
+    try testLiteralExpression(.{ .string_value = "y" }, ast.Expression.init(function_literal.parameters[1]));
+
+    try std.testing.expectEqual(1, function_literal.body.?.statements.len);
+
+    const body_stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(function_literal.body.?.statements[0].ptr));
+
+    try testInfixEpression(.{ .string_value = "x" }, "+", .{ .string_value = "y" }, body_stmt.expression.?);
+}
+
+test "function parameters" {
+    try testFunctionParameters("fn() {};", &.{});
+    try testFunctionParameters("fn(x) {};", &.{"x"});
+    try testFunctionParameters("fn(x, y, z) {};", &.{"x", "y", "z"});
+}
+
+fn testFunctionParameters(input: []const u8, expected_params: []const []const u8) !void {
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const function_literal: *const ast.FunctionLiteral = @ptrCast(@alignCast(stmt.expression.?.ptr));
+
+    try std.testing.expectEqual(expected_params.len, function_literal.parameters.len);
+
+    for (expected_params, 0..) |expected_param, i| {
+        try testLiteralExpression(.{ .string_value = expected_param }, ast.Expression.init(function_literal.parameters[i]));
+    }
 }

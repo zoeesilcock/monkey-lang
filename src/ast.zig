@@ -325,6 +325,51 @@ pub const BooleanLiteral = struct {
     }
 };
 
+pub const FunctionLiteral = struct {
+    token: token.Token,
+    parameters: []*Identifier,
+    body: ?*BlockStatement,
+
+    pub fn tokenLiteral(self: *FunctionLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: FunctionLiteral) void {
+        _ = self;
+    }
+
+    pub fn string(self: *FunctionLiteral, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "(",
+        }) catch "";
+
+        for (self.parameters) |param| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                param.string(allocator),
+                ", ",
+            }) catch "";
+        }
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            ")",
+        }) catch "";
+
+        if (self.body) |body| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                body.string(allocator),
+            }) catch "";
+        }
+
+        return out;
+    }
+};
+
 pub const PrefixExpression = struct {
     token: token.Token,
     operator: []const u8,
