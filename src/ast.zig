@@ -3,6 +3,8 @@ const token = @import("token.zig");
 
 const NodeType = enum {
     Program,
+    Statement,
+    Expression,
     LetStatement,
     ReturnStatement,
     ExpressionStatement,
@@ -49,6 +51,8 @@ pub const Node = struct {
 
         const node_type: NodeType = switch(Ptr) {
             *Program => NodeType.Program,
+            *Statement => NodeType.Statement,
+            *Expression => NodeType.Expression,
             *LetStatement => NodeType.LetStatement,
             *ReturnStatement => NodeType.ReturnStatement,
             *ExpressionStatement => NodeType.ExpressionStatement,
@@ -61,7 +65,10 @@ pub const Node = struct {
             *InfixExpression => NodeType.InfixExpression,
             *IfExpression => NodeType.IfExpression,
             *CallExpression => NodeType.CallExpression,
-            else => unreachable,
+            else => {
+                std.debug.print("Unsupported Node type: {?}\n", .{ Ptr });
+                unreachable;
+            },
         };
 
         const impl = struct {
@@ -91,7 +98,7 @@ pub const Program = struct {
 
     pub fn tokenLiteral(self: *Program) []const u8 {
         if (self.statements.len > 0) {
-            return self.statements[0].tokenliteral();
+            return self.statements[0].tokenLiteral();
         } else {
             return "";
         }
@@ -182,7 +189,10 @@ pub const Statement = struct {
             *ReturnStatement => StatementType.ReturnStatement,
             *ExpressionStatement => StatementType.ExpressionStatement,
             *BlockStatement => StatementType.BlockStatement,
-            else => unreachable,
+            else => {
+                std.debug.print("Unsupported Statement type: {?}\n", .{ Ptr });
+                unreachable;
+            },
         };
 
         const impl = struct {
@@ -375,7 +385,10 @@ pub const Expression = struct {
             *InfixExpression => ExpressionType.InfixExpression,
             *IfExpression => ExpressionType.IfExpression,
             *CallExpression => ExpressionType.CallExpression,
-            else => unreachable,
+            else => {
+                std.debug.print("Unsupported Expression type: {?}\n", .{ Ptr });
+                unreachable;
+            },
         };
 
         const impl = struct {
