@@ -18,6 +18,10 @@ pub fn eval(node: ast.Node) ?object.Object {
             var integer = object.Integer{ .value = node.unwrap(ast.IntegerLiteral).value };
             return object.Object.init(&integer);
         },
+        .BooleanLiteral => {
+            var boolean = object.Boolean{ .value = node.unwrap(ast.BooleanLiteral).value };
+            return object.Object.init(&boolean);
+        },
         else => {
             std.debug.print("Unexpected Node type: {?}\n", .{ node.node_type });
             return null;
@@ -30,10 +34,8 @@ fn evalExpression(opt_expression: ?ast.Expression) ?object.Object {
 
     if (opt_expression) |*expression| {
         switch (expression.expression_type) {
-            .IntegerLiteral => {
-                const e: *ast.IntegerLiteral = expression.unwrap(ast.IntegerLiteral);
-                result = eval(ast.Node.init(e));
-            },
+            .IntegerLiteral => result = eval(ast.Node.init(expression.unwrap(ast.IntegerLiteral))),
+            .BooleanLiteral => result = eval(ast.Node.init(expression.unwrap(ast.BooleanLiteral))),
             else => unreachable,
         }
     }
@@ -46,10 +48,7 @@ fn evalStatements(stmts: []const ast.Statement) ?object.Object {
 
     for (stmts) |stmt| {
         switch (stmt.statement_type) {
-            .ExpressionStatement => {
-                const s = stmt.unwrap(ast.ExpressionStatement);
-                result = eval(ast.Node.init(s));
-            },
+            .ExpressionStatement => result = eval(ast.Node.init(stmt.unwrap(ast.ExpressionStatement))),
             else => unreachable,
         }
     }
@@ -84,4 +83,25 @@ fn testIntegerObject(obj: object.Object, expected_value: i64) !void {
     const integer: *object.Integer = obj.unwrap(object.Integer);
 
     try std.testing.expectEqual(expected_value, integer.value);
+}
+
+test "eval boolean expression" {
+    try testEvalBoolean("true", true);
+    try testEvalBoolean("false", false);
+}
+
+fn testEvalBoolean(input: []const u8, expected_value: bool) !void {
+    if (try testEval(input)) |evaluated| {
+        try testBooleanObject(evaluated, expected_value);
+    } else {
+        unreachable;
+    }
+}
+
+fn testBooleanObject(obj: object.Object, expected_value: bool) !void {
+    try std.testing.expectEqual(obj.inner_type, .Boolean);
+
+    const boolean: *object.Boolean = obj.unwrap(object.Boolean);
+
+    try std.testing.expectEqual(expected_value, boolean.value);
 }

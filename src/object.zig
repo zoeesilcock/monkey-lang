@@ -96,7 +96,7 @@ pub const Boolean = struct {
     }
 
     pub fn inspect(self: Boolean, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{s}", .{ if (self.value) "true" else "false" });
+        return std.fmt.allocPrint(allocator, "{s}", .{ if (self.value) "true" else "false" }) catch "";
     }
 };
 
