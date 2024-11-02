@@ -584,7 +584,7 @@ fn testLiteralExpression(expected_value: TestValue, expression: ast.Expression) 
 }
 
 fn testIntegerLiteral(expected_value: i64, integer_literal: ast.Expression) !void {
-    const literal: *ast.IntegerLiteral = @ptrCast(@alignCast(integer_literal.ptr));
+    const literal: *ast.IntegerLiteral = integer_literal.unwrap(ast.IntegerLiteral);
     try std.testing.expectEqual(expected_value, literal.value);
 
     var buf: [10]u8 = undefined;
@@ -593,7 +593,7 @@ fn testIntegerLiteral(expected_value: i64, integer_literal: ast.Expression) !voi
 }
 
 fn testBooleanLiteral(expected_value: bool, boolean_literal: ast.Expression) !void {
-    const literal: *ast.BooleanLiteral = @ptrCast(@alignCast(boolean_literal.ptr));
+    const literal: *ast.BooleanLiteral = boolean_literal.unwrap(ast.BooleanLiteral);
     try std.testing.expectEqual(expected_value, literal.value);
 
     var buf: [10]u8 = undefined;
@@ -617,7 +617,7 @@ fn testLetStatement(input: []const u8, expected_identifier: []const u8, expected
     const stmt = setup.program.statements[0];
     try std.testing.expectEqualSlices(u8, "let", stmt.tokenLiteral());
 
-    const let_stmt: *const ast.LetStatement = @ptrCast(@alignCast(stmt.ptr));
+    const let_stmt: *const ast.LetStatement = stmt.unwrap(ast.LetStatement);
     try std.testing.expectEqualSlices(u8, expected_identifier, let_stmt.name.value);
     try std.testing.expectEqualSlices(u8, expected_identifier, let_stmt.name.tokenLiteral());
 
@@ -670,7 +670,7 @@ test "return statements" {
 }
 
 fn testReturnStatement(expected_value: TestValue, s: ast.Statement) !void {
-    var return_stmt: *ast.ReturnStatement = @ptrCast(@alignCast(s.ptr));
+    var return_stmt: *ast.ReturnStatement = s.unwrap(ast.ReturnStatement);
     try std.testing.expectEqualSlices(u8, "return", return_stmt.tokenLiteral());
     try testLiteralExpression(expected_value, return_stmt.return_value.?);
 }
@@ -684,14 +684,14 @@ test "identifier expression" {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
     if (stmt.expression) |expression| {
         try testIdentifier("foobar", expression);
     }
 }
 
 fn testIdentifier(expected_value: []const u8, expression: ast.Expression) !void {
-    const ident: *ast.Identifier = @ptrCast(@alignCast(expression.ptr));
+    const ident: *ast.Identifier = expression.unwrap(ast.Identifier);
 
     try std.testing.expectEqualSlices(u8, expected_value, ident.value);
     try std.testing.expectEqualSlices(u8, expected_value, ident.tokenLiteral());
@@ -706,9 +706,9 @@ test "integer literal expression" {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
     if (stmt.expression) |expression| {
-        const literal: *ast.IntegerLiteral = @ptrCast(@alignCast(expression.ptr));
+        const literal: *ast.IntegerLiteral = expression.unwrap(ast.IntegerLiteral);
         try std.testing.expectEqual(5, literal.value);
         try std.testing.expectEqualSlices(u8, "5", literal.tokenLiteral());
     }
@@ -726,9 +726,9 @@ fn testBooleanExpression(input: []const u8, expected_value: bool) !void {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
     if (stmt.expression) |expression| {
-        const literal: *ast.BooleanLiteral = @ptrCast(@alignCast(expression.ptr));
+        const literal: *ast.BooleanLiteral = expression.unwrap(ast.BooleanLiteral);
         try std.testing.expectEqual(expected_value, literal.value);
     }
 }
@@ -749,9 +749,9 @@ fn testPrefixExpression(input: []const u8, expected_operator: []const u8, expect
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
     if (stmt.expression) |expression| {
-        const prefix_expression: *ast.PrefixExpression = @ptrCast(@alignCast(expression.ptr));
+        const prefix_expression: *ast.PrefixExpression = expression.unwrap(ast.PrefixExpression);
         try std.testing.expectEqualSlices(u8, expected_operator, prefix_expression.operator);
         try testLiteralExpression(expected_value, prefix_expression.right.?);
     }
@@ -786,14 +786,14 @@ fn testParsingInfixExpression(input: []const u8, left_value: TestValue, operator
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const stmt: *ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
     if (stmt.expression) |expression| {
         try testInfixEpression(left_value, operator, right_value, expression);
     }
 }
 
 fn testInfixEpression(left_value: TestValue, operator: []const u8, right_value: TestValue, expression: ast.Expression) !void {
-    const infix_expression: *ast.InfixExpression = @ptrCast(@alignCast(expression.ptr));
+    const infix_expression: *ast.InfixExpression = expression.unwrap(ast.InfixExpression);
     try testLiteralExpression(left_value, infix_expression.left.?);
     try std.testing.expectEqualSlices(u8, operator, infix_expression.operator);
     try testLiteralExpression(right_value, infix_expression.right.?);
@@ -919,13 +919,13 @@ test "if expression" {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
-    const expression: *const ast.IfExpression = @ptrCast(@alignCast(stmt.expression.?.ptr));
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+    const expression: *const ast.IfExpression = stmt.expression.?.unwrap(ast.IfExpression);
 
     try testInfixEpression(.{ .string_value = "x" }, "<", .{ .string_value = "y" }, expression.condition.?);
     try std.testing.expectEqual(1, expression.consequence.?.statements.len);
 
-    const consequence: *const ast.ExpressionStatement = @ptrCast(@alignCast(expression.consequence.?.statements[0].ptr));
+    const consequence: *const ast.ExpressionStatement = expression.consequence.?.statements[0].unwrap(ast.ExpressionStatement);
     try testIdentifier("x", consequence.expression.?);
 
     try std.testing.expectEqual(null, expression.alternative);
@@ -939,17 +939,17 @@ test "if else expression" {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
-    const expression: *const ast.IfExpression = @ptrCast(@alignCast(stmt.expression.?.ptr));
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+    const expression: *const ast.IfExpression = stmt.expression.?.unwrap(ast.IfExpression);
 
     try testInfixEpression(.{ .string_value = "x" }, "<", .{ .string_value = "y" }, expression.condition.?);
     try std.testing.expectEqual(1, expression.consequence.?.statements.len);
 
-    const consequence: *const ast.ExpressionStatement = @ptrCast(@alignCast(expression.consequence.?.statements[0].ptr));
+    const consequence: *const ast.ExpressionStatement = expression.consequence.?.statements[0].unwrap(ast.ExpressionStatement);
     try testIdentifier("x", consequence.expression.?);
 
     try std.testing.expectEqual(1, expression.alternative.?.statements.len);
-    const alternative: *const ast.ExpressionStatement = @ptrCast(@alignCast(expression.alternative.?.statements[0].ptr));
+    const alternative: *const ast.ExpressionStatement = expression.alternative.?.statements[0].unwrap(ast.ExpressionStatement);
     try testIdentifier("y", alternative.expression.?);
 }
 
@@ -961,8 +961,8 @@ test "function literals" {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
-    const function_literal: *const ast.FunctionLiteral = @ptrCast(@alignCast(stmt.expression.?.ptr));
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+    const function_literal: *const ast.FunctionLiteral = stmt.expression.?.unwrap(ast.FunctionLiteral);
 
     try std.testing.expectEqual(2, function_literal.parameters.len);
 
@@ -971,7 +971,7 @@ test "function literals" {
 
     try std.testing.expectEqual(1, function_literal.body.?.statements.len);
 
-    const body_stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(function_literal.body.?.statements[0].ptr));
+    const body_stmt: *const ast.ExpressionStatement = function_literal.body.?.statements[0].unwrap(ast.ExpressionStatement);
 
     try testInfixEpression(.{ .string_value = "x" }, "+", .{ .string_value = "y" }, body_stmt.expression.?);
 }
@@ -989,8 +989,8 @@ fn testFunctionParameters(input: []const u8, expected_params: []const []const u8
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
-    const function_literal: *const ast.FunctionLiteral = @ptrCast(@alignCast(stmt.expression.?.ptr));
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+    const function_literal: *const ast.FunctionLiteral = stmt.expression.?.unwrap(ast.FunctionLiteral);
 
     try std.testing.expectEqual(expected_params.len, function_literal.parameters.len);
 
@@ -1007,8 +1007,8 @@ test "call expressions" {
     try expectErrors(&setup.parser, 0);
     try std.testing.expectEqual(1, setup.program.statements.len);
 
-    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
-    const call_expression: *ast.CallExpression = @ptrCast(@alignCast(stmt.expression.?.ptr));
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+    const call_expression: *ast.CallExpression = stmt.expression.?.unwrap(ast.CallExpression);
 
     try testIdentifier("add", call_expression.function.?);
 

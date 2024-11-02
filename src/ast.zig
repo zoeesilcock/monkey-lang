@@ -1,6 +1,91 @@
 const std = @import("std");
 const token = @import("token.zig");
 
+const NodeType = enum {
+    Program,
+    LetStatement,
+    ReturnStatement,
+    ExpressionStatement,
+    BlockStatement,
+    Identifier,
+    IntegerLiteral,
+    BooleanLiteral,
+    FunctionLiteral,
+    PrefixExpression,
+    InfixExpression,
+    IfExpression,
+    CallExpression,
+};
+
+pub const Node = struct {
+    ptr: *anyopaque,
+    node_type: NodeType,
+    vtab: *const VTab,
+
+    const VTab = struct {
+        tokenLiteral: *const fn(ptr: *anyopaque) []const u8,
+        string: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) []const u8,
+    };
+
+    pub fn tokenLiteral(self: Node) []const u8 {
+        return self.vtab.tokenLiteral(self.ptr);
+    }
+
+    pub fn string(self: Node, allocator: std.mem.Allocator) []const u8 {
+        return self.vtab.string(self.ptr, allocator);
+    }
+
+    pub fn unwrap(self: Node, comptime T: type) *T {
+        return @ptrCast(@alignCast(self.ptr));
+    }
+
+    pub fn init(obj: anytype) Node {
+        const Ptr = @TypeOf(obj);
+        const PtrInfo = @typeInfo(Ptr);
+
+        std.debug.assert(PtrInfo == .Pointer);
+        std.debug.assert(PtrInfo.Pointer.size == .One);
+        std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+
+        const node_type: NodeType = switch(Ptr) {
+            *Program => NodeType.Program,
+            *LetStatement => NodeType.LetStatement,
+            *ReturnStatement => NodeType.ReturnStatement,
+            *ExpressionStatement => NodeType.ExpressionStatement,
+            *BlockStatement => NodeType.BlockStatement,
+            *Identifier => NodeType.Identifier,
+            *IntegerLiteral => NodeType.IntegerLiteral,
+            *BooleanLiteral => NodeType.BooleanLiteral,
+            *FunctionLiteral => NodeType.FunctionLiteral,
+            *PrefixExpression => NodeType.PrefixExpression,
+            *InfixExpression => NodeType.InfixExpression,
+            *IfExpression => NodeType.IfExpression,
+            *CallExpression => NodeType.CallExpression,
+            else => unreachable,
+        };
+
+        const impl = struct {
+            fn tokenLiteral(ptr: *anyopaque) []const u8 {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                return self.tokenLiteral();
+            }
+            fn string(ptr: *anyopaque, allocator: std.mem.Allocator) []const u8 {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                return self.string(allocator);
+            }
+        };
+
+        return .{
+            .ptr = obj,
+            .node_type = node_type,
+            .vtab = &.{
+                .tokenLiteral = impl.tokenLiteral,
+                .string = impl.string,
+            },
+        };
+    }
+};
+
 pub const Program = struct {
     statements: []const Statement,
 
@@ -50,8 +135,16 @@ test "Program.string" {
     try std.testing.expectEqualSlices(u8, "let myVar = anotherVar;", test_string);
 }
 
+const StatementType = enum {
+    LetStatement,
+    ReturnStatement,
+    ExpressionStatement,
+    BlockStatement,
+};
+
 pub const Statement = struct {
     ptr: *anyopaque,
+    statement_type: StatementType,
     vtab: *const VTab,
 
     const VTab = struct {
@@ -72,6 +165,10 @@ pub const Statement = struct {
         return self.vtab.string(self.ptr, allocator);
     }
 
+    pub fn unwrap(self: Statement, comptime T: type) *T {
+        return @ptrCast(@alignCast(self.ptr));
+    }
+ 
     pub fn init(obj: anytype) Statement {
         const Ptr = @TypeOf(obj);
         const PtrInfo = @typeInfo(Ptr);
@@ -79,6 +176,14 @@ pub const Statement = struct {
         std.debug.assert(PtrInfo == .Pointer);
         std.debug.assert(PtrInfo.Pointer.size == .One);
         std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+
+        const statement_type: StatementType = switch(Ptr) {
+            *LetStatement => StatementType.LetStatement,
+            *ReturnStatement => StatementType.ReturnStatement,
+            *ExpressionStatement => StatementType.ExpressionStatement,
+            *BlockStatement => StatementType.BlockStatement,
+            else => unreachable,
+        };
 
         const impl = struct {
             fn tokenLiteral(ptr: *anyopaque) []const u8 {
@@ -97,6 +202,7 @@ pub const Statement = struct {
 
         return .{
             .ptr = obj,
+            .statement_type = statement_type,
             .vtab = &.{
                 .tokenLiteral = impl.tokenLiteral,
                 .statementNode = impl.statementNode,
@@ -214,9 +320,20 @@ pub const BlockStatement = struct {
     }
 };
 
+const ExpressionType = enum {
+    Identifier,
+    IntegerLiteral,
+    BooleanLiteral,
+    FunctionLiteral,
+    PrefixExpression,
+    InfixExpression,
+    IfExpression,
+    CallExpression,
+};
 
 pub const Expression = struct {
     ptr: *anyopaque,
+    expression_type: ExpressionType,
     vtab: *const VTab,
 
     const VTab = struct {
@@ -237,6 +354,10 @@ pub const Expression = struct {
         return self.vtab.string(self.ptr, allocator);
     }
 
+    pub fn unwrap(self: Expression, comptime T: type) *T {
+        return @ptrCast(@alignCast(self.ptr));
+    }
+
     pub fn init(obj: anytype) Expression {
         const Ptr = @TypeOf(obj);
         const PtrInfo = @typeInfo(Ptr);
@@ -244,6 +365,18 @@ pub const Expression = struct {
         std.debug.assert(PtrInfo == .Pointer);
         std.debug.assert(PtrInfo.Pointer.size == .One);
         std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+
+        const expression_type: ExpressionType = switch(Ptr) {
+            *Identifier => ExpressionType.Identifier,
+            *IntegerLiteral => ExpressionType.IntegerLiteral,
+            *BooleanLiteral => ExpressionType.BooleanLiteral,
+            *FunctionLiteral => ExpressionType.FunctionLiteral,
+            *PrefixExpression => ExpressionType.PrefixExpression,
+            *InfixExpression => ExpressionType.InfixExpression,
+            *IfExpression => ExpressionType.IfExpression,
+            *CallExpression => ExpressionType.CallExpression,
+            else => unreachable,
+        };
 
         const impl = struct {
             fn tokenLiteral(ptr: *anyopaque) []const u8 {
@@ -262,6 +395,7 @@ pub const Expression = struct {
 
         return .{
             .ptr = obj,
+            .expression_type = expression_type,
             .vtab = &.{
                 .tokenLiteral = impl.tokenLiteral,
                 .expressionNode = impl.expressionNode,
