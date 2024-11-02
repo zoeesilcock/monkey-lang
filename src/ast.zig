@@ -346,11 +346,11 @@ pub const FunctionLiteral = struct {
             "(",
         }) catch "";
 
-        for (self.parameters) |param| {
+        for (self.parameters, 0..) |param, i| {
             out = std.mem.concat(allocator, u8, &.{ 
                 out,
                 param.string(allocator),
-                ", ",
+                if (i < self.parameters.len - 1) ", " else "",
             }) catch "";
         }
 
@@ -463,6 +463,45 @@ pub const IfExpression = struct {
                 alternative.string(allocator),
             }) catch "";
         }
+
+        return out;
+    }
+};
+
+pub const CallExpression = struct {
+    token: token.Token,
+    function: ?Expression,
+    arguments: []Expression,
+
+    pub fn tokenLiteral(self: *CallExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: CallExpression) void {
+        _ = self;
+    }
+
+    pub fn string(self: *CallExpression, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            if (self.function) |function| function.string(allocator) else "",
+            "(",
+        }) catch "";
+
+        for (self.arguments, 0..) |arg, i| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                arg.string(allocator),
+                if (i < self.arguments.len - 1) ", " else "",
+            }) catch "";
+        }
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            ")",
+        }) catch "";
 
         return out;
     }

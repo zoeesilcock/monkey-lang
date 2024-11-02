@@ -50,6 +50,7 @@ const Parser = struct {
         try p.precedences.put(token.MINUS, .SUM);
         try p.precedences.put(token.SLASH, .PRODUCT);
         try p.precedences.put(token.ASTERISK, .PRODUCT);
+        try p.precedences.put(token.LPAREN, .CALL);
 
         try p.registerPrefix(token.IDENT, parseIdentifier);
         try p.registerPrefix(token.INT, parseIntegerLiteral);
@@ -69,6 +70,7 @@ const Parser = struct {
         try p.registerInfix(token.NOT_EQ, parseInfixExpression);
         try p.registerInfix(token.LT, parseInfixExpression);
         try p.registerInfix(token.GT, parseInfixExpression);
+        try p.registerInfix(token.LPAREN, parseCallExpression);
 
         try p.nextToken();
         try p.nextToken();
@@ -281,6 +283,38 @@ const Parser = struct {
         return try identifiers.toOwnedSlice();
     }
 
+    fn parseCallArguments(self: *Parser) !?[]ast.Expression {
+        tracer.trace(@src().fn_name);
+        defer tracer.untrace(@src().fn_name);
+
+        var args = std.ArrayList(ast.Expression).init(self.arena.allocator());
+
+        if (self.peekTokenIs(token.LPAREN)) {
+            try self.nextToken();
+            return try args.toOwnedSlice();
+        }
+
+        try self.nextToken();
+        if (try self.parseExpression(.LOWEST)) |expression| {
+            try args.append(expression);
+        }
+
+        while (self.peekTokenIs(token.COMMA)) {
+            try self.nextToken();
+            try self.nextToken();
+
+            if (try self.parseExpression(.LOWEST)) |expression| {
+                try args.append(expression);
+            }
+        }
+
+        if (!try self.expectPeek(token.RPAREN)) {
+            return null;
+        }
+
+        return try args.toOwnedSlice();
+    }
+
     fn noPrefixParseFnError(self: *Parser, token_type: token.TokenType) !void {
         var error_array = try std.ArrayList([]const u8).initCapacity(self.arena.allocator(), self.errors.len);
         try error_array.appendSlice(self.errors);
@@ -476,6 +510,15 @@ fn parseFunctionLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     }
 
     return ast.Expression.init(lit);
+}
+
+fn parseCallExpression(self: *Parser, function: ast.Expression) std.mem.Allocator.Error!?ast.Expression {
+    var expression: *ast.CallExpression = try self.arena.allocator().create(ast.CallExpression);
+    expression.token = self.cur_token;
+    expression.function = function;
+    expression.arguments = try self.parseCallArguments() orelse &.{};
+
+    return ast.Expression.init(expression);
 
 }
 
@@ -816,6 +859,18 @@ test "operator precedence parsing" {
         "!(true == true)",
         "(!(true == true))",
     );
+    try testOperatorPrecedenceParsing(
+        "a + add(b * c) + d",
+        "((a + add((b * c))) + d)",
+    );
+    try testOperatorPrecedenceParsing(
+        "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+        "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+    );
+    try testOperatorPrecedenceParsing(
+        "add(a + b + c * d / f + g)",
+        "add((((a + b) + ((c * d) / f)) + g))",
+    );
 }
 
 fn testOperatorPrecedenceParsing(input: []const u8, expected: []const u8) !void {
@@ -913,4 +968,24 @@ fn testFunctionParameters(input: []const u8, expected_params: []const []const u8
     for (expected_params, 0..) |expected_param, i| {
         try testLiteralExpression(.{ .string_value = expected_param }, ast.Expression.init(function_literal.parameters[i]));
     }
+}
+
+test "call expressions" {
+    const input = "add(1, 2 * 3, 4 + 5);";
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *const ast.ExpressionStatement = @ptrCast(@alignCast(setup.program.statements[0].ptr));
+    const call_expression: *ast.CallExpression = @ptrCast(@alignCast(stmt.expression.?.ptr));
+
+    try testIdentifier("add", call_expression.function.?);
+
+    try std.testing.expectEqual(3, call_expression.arguments.len);
+
+    try testLiteralExpression(.{ .int_value = 1 }, call_expression.arguments[0]);
+    try testInfixEpression(.{ .int_value = 2 }, "*", .{ .int_value = 3 }, call_expression.arguments[1]);
+    try testInfixEpression(.{ .int_value = 4 }, "+", .{ .int_value = 5 }, call_expression.arguments[2]);
 }
