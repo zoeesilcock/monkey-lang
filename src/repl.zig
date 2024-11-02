@@ -1,7 +1,9 @@
 const std = @import("std");
+const ast = @import("ast.zig");
 const token = @import("token.zig");
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
+const evaluator = @import("evaluator.zig");
 
 const PROMPT = ">> ";
 const MONKEY_FACE =
@@ -31,14 +33,16 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
         defer l.deinit();
         var p = try Parser.new(&l);
 
-        const program = try p.parseProgram();
+        var program = try p.parseProgram();
 
         if (p.errors.len > 0) {
             try printParserErrors(out, p.errors);
             continue;
         }
 
-        try stdout.print("{s}\n", .{ program.string(p.arena.allocator()) });
+        if (evaluator.eval(ast.Node.init(&program))) |evaluated| {
+            try stdout.print("{s}\n", .{ evaluated.inspect(p.arena.allocator()) });
+        }
     }
 }
 

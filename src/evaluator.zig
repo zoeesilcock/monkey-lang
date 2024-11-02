@@ -4,7 +4,7 @@ const lexer = @import("lexer.zig");
 const object = @import("object.zig");
 const parser = @import("parser.zig");
 
-fn eval(node: ast.Node) ?object.Object {
+pub fn eval(node: ast.Node) ?object.Object {
     switch (node.node_type) {
         .Program => {
             const program: *ast.Program = node.unwrap(ast.Program);

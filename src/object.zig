@@ -27,7 +27,7 @@ pub const Object = struct {
     }
 
     pub fn inspect(self: Object, allocator: std.mem.Allocator) []const u8 {
-        return self.vtab.insect(self.ptr, allocator);
+        return self.vtab.inspect(self.ptr, allocator);
     }
 
     pub fn unwrap(self: Object, comptime T: type) *T {
