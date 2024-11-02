@@ -138,6 +138,9 @@ const Parser = struct {
     }
 
     fn parseLetStatement(self: *Parser) !?*ast.LetStatement {
+        tracer.trace(@src().fn_name);
+        defer tracer.untrace(@src().fn_name);
+
         const tok = self.cur_token;
 
         if (!try self.expectPeek(token.IDENT)) {
@@ -252,6 +255,9 @@ const Parser = struct {
     }
 
     fn parseFunctionParameters(self: *Parser) !?[]*ast.Identifier {
+        tracer.trace(@src().fn_name);
+        defer tracer.untrace(@src().fn_name);
+
         var identifiers = std.ArrayList(*ast.Identifier).init(self.arena.allocator());
 
         if (self.peekTokenIs(token.RPAREN)) {
@@ -381,6 +387,9 @@ const Parser = struct {
 };
 
 fn parseIdentifier(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var identifier: *ast.Identifier = try self.arena.allocator().create(ast.Identifier);
     identifier.token = self.cur_token;
     identifier.value = try self.arena.allocator().dupe(u8, self.cur_token.literal);
@@ -406,6 +415,9 @@ fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 }
 
 fn parseBooleanLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var lit: *ast.BooleanLiteral = try self.arena.allocator().create(ast.BooleanLiteral);
     lit.token = self.cur_token;
     lit.value = self.curTokenIs(token.TRUE);
@@ -414,6 +426,9 @@ fn parseBooleanLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 }
 
 fn parseGroupedExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     try self.nextToken();
 
     var expression: ?ast.Expression = try self.parseExpression(.LOWEST);
@@ -426,6 +441,9 @@ fn parseGroupedExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression
 }
 
 fn parseIfExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var expression: *ast.IfExpression = try self.arena.allocator().create(ast.IfExpression);
     expression.token = self.cur_token;
 
@@ -491,6 +509,9 @@ fn parseInfixExpression(self: *Parser, left: ast.Expression) std.mem.Allocator.E
 }
 
 fn parseFunctionLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var lit: *ast.FunctionLiteral = try self.arena.allocator().create(ast.FunctionLiteral);
     lit.token = self.cur_token;
     lit.body = null;
@@ -513,6 +534,9 @@ fn parseFunctionLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 }
 
 fn parseCallExpression(self: *Parser, function: ast.Expression) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
     var expression: *ast.CallExpression = try self.arena.allocator().create(ast.CallExpression);
     expression.token = self.cur_token;
     expression.function = function;
