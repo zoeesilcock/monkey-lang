@@ -7,6 +7,7 @@ const evaluator = @import("evaluator.zig");
 
 const PROMPT = ">> ";
 const MONKEY_FACE =
+\\            __,__
 \\   .--.  .-"     "-.  .--.
 \\  / .. \/  .-. .-.  \/ .. \
 \\ | |  '|  /   Y   \  |'  | |
