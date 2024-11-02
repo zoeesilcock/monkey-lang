@@ -17,7 +17,7 @@ const OperatorPrecedence = enum(u32) {
     CALL,
 };
 
-const Parser = struct {
+pub const Parser = struct {
     arena: std.heap.ArenaAllocator,
 
     l: *lexer.Lexer,
