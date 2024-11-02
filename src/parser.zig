@@ -519,7 +519,6 @@ fn parseCallExpression(self: *Parser, function: ast.Expression) std.mem.Allocato
     expression.arguments = try self.parseCallArguments() orelse &.{};
 
     return ast.Expression.init(expression);
-
 }
 
 const TestSetup = struct {
@@ -579,28 +578,24 @@ fn testBooleanLiteral(expected_value: bool, boolean_literal: ast.Expression) !vo
 }
 
 test "let statements" {
-    const input =
-        \\let x = 5;
-        \\let y = 10;
-        \\let foobar = y;
-    ;
+    try testLetStatement("let x = 5;", "x", .{ .int_value = 5 });
+    try testLetStatement("let y = true;", "y", .{ .bool_value = true });
+    try testLetStatement("let foobar = y;", "foobar", .{ .string_value = "y" });
+}
+
+fn testLetStatement(input: []const u8, expected_identifier: []const u8, expected_value: TestValue) !void {
     var setup = try setupTestParser(input);
     defer setup.deinit();
 
     try expectErrors(&setup.parser, 0);
-    try std.testing.expectEqual(3, setup.program.statements.len);
+    try std.testing.expectEqual(1, setup.program.statements.len);
 
-    try testLetStatement("x", .{ .int_value = 5 }, setup.program.statements[0]);
-    try testLetStatement("y", .{ .int_value = 10 }, setup.program.statements[1]);
-    try testLetStatement("foobar", .{ .string_value = "y" }, setup.program.statements[2]);
-}
+    const stmt = setup.program.statements[0];
+    try std.testing.expectEqualSlices(u8, "let", stmt.tokenLiteral());
 
-fn testLetStatement(expected_name: []const u8, expected_value: TestValue, s: ast.Statement) !void {
-    try std.testing.expectEqualSlices(u8, "let", s.tokenLiteral());
-
-    const let_stmt: *const ast.LetStatement = @ptrCast(@alignCast(s.ptr));
-    try std.testing.expectEqualSlices(u8, expected_name, let_stmt.name.value);
-    try std.testing.expectEqualSlices(u8, expected_name, let_stmt.name.tokenLiteral());
+    const let_stmt: *const ast.LetStatement = @ptrCast(@alignCast(stmt.ptr));
+    try std.testing.expectEqualSlices(u8, expected_identifier, let_stmt.name.value);
+    try std.testing.expectEqualSlices(u8, expected_identifier, let_stmt.name.tokenLiteral());
 
     try testLiteralExpression(expected_value, let_stmt.value.?);
 }
@@ -717,6 +712,8 @@ fn testBooleanExpression(input: []const u8, expected_value: bool) !void {
 test "prefix expressions" {
     try testPrefixExpression("!5;", "!", .{ .int_value = 5 });
     try testPrefixExpression("-15;", "-", .{ .int_value = 15 });
+    try testPrefixExpression("!foobar;", "!", .{ .string_value = "foobar" });
+    try testPrefixExpression("-foobar;", "-", .{ .string_value = "foobar" });
     try testPrefixExpression("!true;", "!", .{ .bool_value = true });
     try testPrefixExpression("!false;", "!", .{ .bool_value = false });
 }
@@ -745,6 +742,14 @@ test "infix expressions" {
     try testParsingInfixExpression("5 < 5;", .{ .int_value = 5 }, "<", .{ .int_value = 5 });
     try testParsingInfixExpression("5 == 5;", .{ .int_value = 5 }, "==", .{ .int_value = 5 });
     try testParsingInfixExpression("5 != 5;", .{ .int_value = 5 }, "!=", .{ .int_value = 5 });
+    try testParsingInfixExpression("foobar + barfoo;", .{ .string_value = "foobar" }, "+", .{ .string_value = "barfoo" });
+    try testParsingInfixExpression("foobar - barfoo;", .{ .string_value = "foobar" }, "-", .{ .string_value = "barfoo" });
+    try testParsingInfixExpression("foobar * barfoo;", .{ .string_value = "foobar" }, "*", .{ .string_value = "barfoo" });
+    try testParsingInfixExpression("foobar / barfoo;", .{ .string_value = "foobar" }, "/", .{ .string_value = "barfoo" });
+    try testParsingInfixExpression("foobar > barfoo;", .{ .string_value = "foobar" }, ">", .{ .string_value = "barfoo" });
+    try testParsingInfixExpression("foobar < barfoo;", .{ .string_value = "foobar" }, "<", .{ .string_value = "barfoo" });
+    try testParsingInfixExpression("foobar == barfoo;", .{ .string_value = "foobar" }, "==", .{ .string_value = "barfoo" });
+    try testParsingInfixExpression("foobar != barfoo;", .{ .string_value = "foobar" }, "!=", .{ .string_value = "barfoo" });
     try testParsingInfixExpression("true == true", .{ .bool_value = true }, "==", .{ .bool_value = true });
     try testParsingInfixExpression("true != false", .{ .bool_value = true }, "!=", .{ .bool_value = false });
     try testParsingInfixExpression("false == false", .{ .bool_value = false }, "==", .{ .bool_value = false });
