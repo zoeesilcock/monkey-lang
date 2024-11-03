@@ -4,6 +4,10 @@ const lexer = @import("lexer.zig");
 const object = @import("object.zig");
 const parser = @import("parser.zig");
 
+const NULL = &object.Null{};
+const TRUE = &object.Boolean{ .value = true };
+const FALSE = &object.Boolean{ .value = false };
+
 pub fn eval(node: ast.Node) ?object.Object {
     switch (node.node_type) {
         .Program => {
@@ -19,8 +23,8 @@ pub fn eval(node: ast.Node) ?object.Object {
             return object.Object.init(&integer);
         },
         .BooleanLiteral => {
-            var boolean = object.Boolean{ .value = node.unwrap(ast.BooleanLiteral).value };
-            return object.Object.init(&boolean);
+            const boolean: *object.Boolean = @constCast(nativeBoolToBooleanObject(node.unwrap(ast.BooleanLiteral).value));
+            return object.Object.init(boolean);
         },
         else => {
             std.debug.print("Unexpected Node type: {?}\n", .{ node.node_type });
@@ -54,6 +58,10 @@ fn evalStatements(stmts: []const ast.Statement) ?object.Object {
     }
 
     return result;
+}
+
+fn nativeBoolToBooleanObject(input: bool) *const object.Boolean {
+    return if (input) TRUE else FALSE;
 }
 
 test "eval integer expression" {
