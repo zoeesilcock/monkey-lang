@@ -26,6 +26,15 @@ pub fn eval(node: ast.Node) ?object.Object {
             const boolean: *object.Boolean = @constCast(nativeBoolToBooleanObject(node.unwrap(ast.BooleanLiteral).value));
             return object.Object.init(boolean);
         },
+        .PrefixExpression => {
+            const expression: *ast.PrefixExpression = node.unwrap(ast.PrefixExpression);
+
+            if (expression.right) |right| {
+                return evalPrefixExpression(expression.operator, evalExpression(right));
+            } else {
+                return null;
+            }
+        },
         else => {
             std.debug.print("Unexpected Node type: {?}\n", .{ node.node_type });
             return null;
@@ -40,7 +49,11 @@ fn evalExpression(opt_expression: ?ast.Expression) ?object.Object {
         switch (expression.expression_type) {
             .IntegerLiteral => result = eval(ast.Node.init(expression.unwrap(ast.IntegerLiteral))),
             .BooleanLiteral => result = eval(ast.Node.init(expression.unwrap(ast.BooleanLiteral))),
-            else => unreachable,
+            .PrefixExpression => result = eval(ast.Node.init(expression.unwrap(ast.PrefixExpression))),
+            else => {
+                std.debug.print("Unexpected expression type in evalExpression: {?}\n", .{ expression.expression_type });
+                unreachable;
+            },
         }
     }
 
@@ -56,6 +69,36 @@ fn evalStatements(stmts: []const ast.Statement) ?object.Object {
             else => unreachable,
         }
     }
+
+    return result;
+}
+
+fn evalPrefixExpression(operator: []const u8, opt_right: ?object.Object) ?object.Object {
+    var result: ?object.Object = null;
+
+    if (opt_right) |right| {
+        if (std.mem.eql(u8, operator, "!")) {
+            result = evalBangOperatorExpression(right);
+        }
+    }
+
+    return result;
+}
+
+fn evalBangOperatorExpression(right: object.Object) ?object.Object {
+    var result: ?object.Object = null;
+    var result_boolean: *object.Boolean = undefined;
+
+    switch (right.inner_type) {
+        .Boolean => {
+            const boolean: *object.Boolean = right.unwrap(object.Boolean);
+            result_boolean = if (boolean.value) @constCast(FALSE) else @constCast(TRUE);
+        },
+        .Null => result_boolean = @constCast(TRUE),
+        else => result_boolean = @constCast(FALSE),
+    }
+
+    result = object.Object.init(result_boolean);
 
     return result;
 }
@@ -112,4 +155,21 @@ fn testBooleanObject(obj: object.Object, expected_value: bool) !void {
     const boolean: *object.Boolean = obj.unwrap(object.Boolean);
 
     try std.testing.expectEqual(expected_value, boolean.value);
+}
+
+test "bang operator" {
+    try testBangOperator("!true", false);
+    try testBangOperator("!false", true);
+    try testBangOperator("!5", false);
+    try testBangOperator("!!true", true);
+    try testBangOperator("!!false", false);
+    try testBangOperator("!!5", true);
+}
+
+fn testBangOperator(input: []const u8, expected_value: bool) !void {
+    if (try testEval(input)) |evaluated| {
+        try testBooleanObject(evaluated, expected_value);
+    } else {
+        unreachable;
+    }
 }

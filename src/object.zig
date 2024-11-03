@@ -101,8 +101,6 @@ pub const Boolean = struct {
 };
 
 pub const Null = struct {
-    value: bool,
-
     pub fn objectType(self: Null) ObjectType {
         _ = self;
         return NULL_OBJ;
