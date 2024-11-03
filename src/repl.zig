@@ -41,7 +41,9 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
             continue;
         }
 
-        if (evaluator.eval(ast.Node.init(&program))) |evaluated| {
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+        if (try evaluator.eval(ast.Node.init(&program), arena.allocator())) |evaluated| {
             try stdout.print("{s}\n", .{ evaluated.inspect(p.arena.allocator()) });
         }
     }
