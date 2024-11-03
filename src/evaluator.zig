@@ -12,15 +12,29 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
     switch (node.node_type) {
         .Program => {
             const program: *ast.Program = node.unwrap(ast.Program);
-            return try evalStatements(program.statements, allocator);
+            return try evalProgram(program, allocator);
         },
         .BlockStatement => {
             const block: *ast.BlockStatement = node.unwrap(ast.BlockStatement);
-            return try evalStatements(block.statements, allocator);
+            return try evalBlockStatement(block, allocator);
         },
         .ExpressionStatement => {
             const stmt: *ast.ExpressionStatement = node.unwrap(ast.ExpressionStatement);
             return evalExpression(stmt.expression, allocator);
+        },
+        .ReturnStatement => {
+            const return_stmt: *ast.ReturnStatement = node.unwrap(ast.ReturnStatement);
+            if (return_stmt.return_value) |return_value| {
+                const opt_value = try evalExpression(return_value, allocator);
+
+                if (opt_value) |value| {
+                    var result: *object.ReturnValue = try allocator.create(object.ReturnValue);
+                    result.value = value;
+                    return object.Object.init(result);
+                }
+            }
+
+            return null;
         },
         .IntegerLiteral => {
             var integer: *object.Integer = try allocator.create(object.Integer);
@@ -67,6 +81,54 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
     }
 }
 
+fn evalProgram(program: *ast.Program, allocator: std.mem.Allocator) !?object.Object {
+    var result: ?object.Object = null;
+
+    for (program.statements) |*stmt| {
+        if (try evalStatement(stmt, allocator)) |evaluated| {
+            result = evaluated;
+
+            if (evaluated.inner_type == object.ObjectInnerType.ReturnValue) {
+                const return_value: *object.ReturnValue = evaluated.unwrap(object.ReturnValue);
+                return return_value.value;
+            }
+        }
+    }
+
+    return result;
+}
+
+fn evalBlockStatement(block: *ast.BlockStatement, allocator: std.mem.Allocator) !?object.Object {
+    var result: ?object.Object = null;
+
+    for (block.statements) |*stmt| {
+        result = try evalStatement(stmt, allocator);
+
+        if (result) |res| {
+            if (std.mem.eql(u8, res.objectType(), object.RETURN_VALUE_OBJ)) {
+                return result;
+            }
+        }
+    }
+
+    return result;
+}
+
+fn evalStatement(stmt: *const ast.Statement, allocator: std.mem.Allocator) !?object.Object {
+    var result: ?object.Object = null;
+
+    switch (stmt.statement_type) {
+        .ExpressionStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ExpressionStatement)), allocator),
+        .ReturnStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ReturnStatement)), allocator),
+        else => {
+            std.debug.print("Unexpected statement type in evalStatements: {?}\n", .{stmt.statement_type});
+            unreachable;
+        },
+    }
+
+    return result;
+}
+
 fn evalExpression(opt_expression: ?ast.Expression, allocator: std.mem.Allocator) !?object.Object {
     var result: ?object.Object = null;
 
@@ -81,19 +143,6 @@ fn evalExpression(opt_expression: ?ast.Expression, allocator: std.mem.Allocator)
                 std.debug.print("Unexpected expression type in evalExpression: {?}\n", .{expression.expression_type});
                 unreachable;
             },
-        }
-    }
-
-    return result;
-}
-
-fn evalStatements(stmts: []const ast.Statement, allocator: std.mem.Allocator) !?object.Object {
-    var result: ?object.Object = null;
-
-    for (stmts) |stmt| {
-        switch (stmt.statement_type) {
-            .ExpressionStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ExpressionStatement)), allocator),
-            else => unreachable,
         }
     }
 
@@ -367,3 +416,29 @@ fn testIfElseExpression(input: []const u8, expected_value: ?parser.TestValue) !v
     }
 }
 
+test "return statements" {
+    try testReturnStatement("return 10;", .{ .int_value = 10 });
+    try testReturnStatement("return 10; 9;", .{ .int_value = 10 });
+    try testReturnStatement("return 2 * 5; 9;", .{ .int_value = 10 });
+    try testReturnStatement("9; return 2 * 5; 9;", .{ .int_value = 10 });
+    try testReturnStatement(
+        \\if (10 > 1) {
+        \\  if (10 > 1) {
+        \\    return 10;
+        \\  }
+        \\
+        \\  return 1;
+        \\}
+    , .{ .int_value = 10 });
+}
+
+fn testReturnStatement(input: []const u8, expected_value: parser.TestValue) !void {
+    if (try testEval(input)) |evaluated| {
+        switch (evaluated.inner_type) {
+            .Integer => try testIntegerObject(evaluated, expected_value.int_value),
+            else => unreachable,
+        }
+    } else {
+        unreachable;
+    }
+}

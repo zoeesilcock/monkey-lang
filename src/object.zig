@@ -5,11 +5,13 @@ pub const ObjectType: type = []const u8;
 pub const INTEGER_OBJ: ObjectType = "INTEGER";
 pub const BOOLEAN_OBJ: ObjectType = "BOOLEAN";
 pub const NULL_OBJ: ObjectType = "NULL";
+pub const RETURN_VALUE_OBJ = "RETURN_VALUE";
 
 pub const ObjectInnerType = enum {
     Integer,
     Boolean,
     Null,
+    ReturnValue,
 };
 
 pub const Object = struct {
@@ -46,6 +48,7 @@ pub const Object = struct {
             *Integer => ObjectInnerType.Integer,
             *Boolean => ObjectInnerType.Boolean,
             *Null => ObjectInnerType.Null,
+            *ReturnValue => ObjectInnerType.ReturnValue,
             else => {
                 std.debug.print("Unsupported Object type: {?}\n", .{ Ptr });
                 unreachable;
@@ -110,5 +113,18 @@ pub const Null = struct {
         _ = self;
         _ = allocator;
         return "null";
+    }
+};
+
+pub const ReturnValue = struct {
+    value: Object,
+
+    pub fn objectType(self: ReturnValue) ObjectType {
+        _ = self;
+        return RETURN_VALUE_OBJ;
+    }
+
+    pub fn inspect(self: ReturnValue, allocator: std.mem.Allocator) []const u8 {
+        return self.value.inspect(allocator);
     }
 };
