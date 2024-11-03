@@ -569,7 +569,7 @@ const TestValueTypes = enum {
     string_value,
 };
 
-const TestValue = union(TestValueTypes) {
+pub const TestValue = union(TestValueTypes) {
     int_value: i64,
     bool_value: bool,
     string_value: []const u8,

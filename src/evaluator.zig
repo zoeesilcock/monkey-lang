@@ -14,6 +14,10 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
             const program: *ast.Program = node.unwrap(ast.Program);
             return try evalStatements(program.statements, allocator);
         },
+        .BlockStatement => {
+            const block: *ast.BlockStatement = node.unwrap(ast.BlockStatement);
+            return try evalStatements(block.statements, allocator);
+        },
         .ExpressionStatement => {
             const stmt: *ast.ExpressionStatement = node.unwrap(ast.ExpressionStatement);
             return evalExpression(stmt.expression, allocator);
@@ -52,6 +56,10 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
 
             return null;
         },
+        .IfExpression => {
+            const if_expression: *ast.IfExpression = node.unwrap(ast.IfExpression);
+            return try evalIfExpression(if_expression, allocator);
+        },
         else => {
             std.debug.print("Unexpected Node type: {?}\n", .{node.node_type});
             return null;
@@ -68,6 +76,7 @@ fn evalExpression(opt_expression: ?ast.Expression, allocator: std.mem.Allocator)
             .BooleanLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.BooleanLiteral)), allocator),
             .PrefixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.PrefixExpression)), allocator),
             .InfixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.InfixExpression)), allocator),
+            .IfExpression => result = try eval(ast.Node.init(expression.unwrap(ast.IfExpression)), allocator),
             else => {
                 std.debug.print("Unexpected expression type in evalExpression: {?}\n", .{expression.expression_type});
                 unreachable;
@@ -204,6 +213,37 @@ fn evalIntegerInfixExpression(
     return result;
 }
 
+fn evalIfExpression(if_expression: *ast.IfExpression, allocator: std.mem.Allocator) !?object.Object {
+    var result: ?object.Object = null;
+    const opt_condition = try evalExpression(if_expression.condition, allocator);
+
+    if (opt_condition) |condition| {
+        if (isTruthy(condition)) {
+            if (if_expression.consequence) |consequence| {
+                result = try eval(ast.Node.init(consequence), allocator);
+            }
+        } else {
+            if (if_expression.alternative) |alternative| {
+                result = try eval(ast.Node.init(alternative), allocator);
+            }
+        }
+    }
+
+    return result;
+}
+
+fn isTruthy(obj: object.Object) bool {
+    if (@intFromPtr(obj.ptr) == @intFromPtr(NULL)) {
+        return false;
+    } else if (@intFromPtr(obj.ptr) == @intFromPtr(TRUE)) {
+        return true;
+    } else if (@intFromPtr(obj.ptr) == @intFromPtr(FALSE)) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 fn nativeBoolToBooleanObject(input: bool) *const object.Boolean {
     return if (input) TRUE else FALSE;
 }
@@ -305,3 +345,25 @@ fn testBangOperator(input: []const u8, expected_value: bool) !void {
         unreachable;
     }
 }
+
+test "if/else expressions" {
+    try testIfElseExpression("if (true) { 10 }", .{ .int_value = 10 });
+    try testIfElseExpression("if (false) { 10 }", null);
+    try testIfElseExpression("if (1) { 10 }", .{ .int_value = 10 });
+    try testIfElseExpression("if (1 < 2) { 10 }", .{ .int_value = 10 });
+    try testIfElseExpression("if (1 > 2) { 10 }", null);
+    try testIfElseExpression("if (1 > 2) { 10 } else { 20 }", .{ .int_value = 20 });
+    try testIfElseExpression("if (1 < 2) { 10 } else { 20 }", .{ .int_value = 10 });
+}
+
+fn testIfElseExpression(input: []const u8, expected_value: ?parser.TestValue) !void {
+    if (try testEval(input)) |evaluated| {
+        switch (evaluated.inner_type) {
+            .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
+            else => unreachable,
+        }
+    } else {
+        try std.testing.expectEqual(null, expected_value);
+    }
+}
+
