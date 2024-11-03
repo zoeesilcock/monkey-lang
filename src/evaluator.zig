@@ -130,7 +130,6 @@ fn evalMinusPrefixOperatorExpression(right: object.Object, allocator: std.mem.Al
         const integer: *object.Integer = right.unwrap(object.Integer);
         var result_integer: *object.Integer = try allocator.create(object.Integer);
         result_integer.value = -integer.value;
-        // var result_integer = object.Integer{ .value = -integer.value };
         result = object.Object.init(result_integer);
     }
 
@@ -164,6 +163,7 @@ fn evalIntegerInfixExpression(
 ) !?object.Object {
     var result: ?object.Object = null;
     var result_integer: ?*object.Integer = null;
+    var result_boolean: ?*object.Boolean = null;
 
     const left_value: i64 = left.unwrap(object.Integer).value;
     const right_value: i64 = right.unwrap(object.Integer).value;
@@ -180,10 +180,20 @@ fn evalIntegerInfixExpression(
     } else if (std.mem.eql(u8, operator, "/")) {
         result_integer = try allocator.create(object.Integer);
         result_integer.?.value = @divFloor(left_value, right_value);
+    } else if (std.mem.eql(u8, operator, "<")) {
+        result_boolean = @constCast(nativeBoolToBooleanObject(left_value < right_value));
+    } else if (std.mem.eql(u8, operator, ">")) {
+        result_boolean = @constCast(nativeBoolToBooleanObject(left_value > right_value));
+    } else if (std.mem.eql(u8, operator, "==")) {
+        result_boolean = @constCast(nativeBoolToBooleanObject(left_value == right_value));
+    } else if (std.mem.eql(u8, operator, "!=")) {
+        result_boolean = @constCast(nativeBoolToBooleanObject(left_value != right_value));
     }
 
     if (result_integer) |integer| {
         result = object.Object.init(integer);
+    } else if (result_boolean) |boolean| {
+        result = object.Object.init(boolean);
     }
 
     return result;
@@ -239,6 +249,14 @@ fn testIntegerObject(obj: object.Object, expected_value: i64) !void {
 test "eval boolean expression" {
     try testEvalBoolean("true", true);
     try testEvalBoolean("false", false);
+    try testEvalBoolean("1 < 2", true);
+    try testEvalBoolean("1 > 2", false);
+    try testEvalBoolean("1 < 1", false);
+    try testEvalBoolean("1 > 1", false);
+    try testEvalBoolean("1 == 1", true);
+    try testEvalBoolean("1 != 1", false);
+    try testEvalBoolean("1 == 2", false);
+    try testEvalBoolean("1 != 2", true);
 }
 
 fn testEvalBoolean(input: []const u8, expected_value: bool) !void {
