@@ -6,12 +6,14 @@ pub const INTEGER_OBJ: ObjectType = "INTEGER";
 pub const BOOLEAN_OBJ: ObjectType = "BOOLEAN";
 pub const NULL_OBJ: ObjectType = "NULL";
 pub const RETURN_VALUE_OBJ = "RETURN_VALUE";
+pub const ERROR_OBJ = "ERROR_OBJ";
 
 pub const ObjectInnerType = enum {
     Integer,
     Boolean,
     Null,
     ReturnValue,
+    Error,
 };
 
 pub const Object = struct {
@@ -49,6 +51,7 @@ pub const Object = struct {
             *Boolean => ObjectInnerType.Boolean,
             *Null => ObjectInnerType.Null,
             *ReturnValue => ObjectInnerType.ReturnValue,
+            *Error => ObjectInnerType.Error,
             else => {
                 std.debug.print("Unsupported Object type: {?}\n", .{ Ptr });
                 unreachable;
@@ -126,5 +129,18 @@ pub const ReturnValue = struct {
 
     pub fn inspect(self: ReturnValue, allocator: std.mem.Allocator) []const u8 {
         return self.value.inspect(allocator);
+    }
+};
+
+pub const Error = struct {
+    message: []const u8,
+
+    pub fn objectType(self: Error) ObjectType {
+        _ = self;
+        return ERROR_OBJ;
+    }
+
+    pub fn inspect(self: Error, allocator: std.mem.Allocator) []const u8 {
+        return std.fmt.allocPrint(allocator, "ERROR: {s}", .{ self.message }) catch "";
     }
 };
