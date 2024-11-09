@@ -398,13 +398,13 @@ fn testEvalInteger(input: []const u8, expected_value: i64) !void {
 }
 
 fn testEval(input: []const u8) !?object.Object {
-    var l = lexer.Lexer.new(input);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var l = lexer.Lexer.init(input, arena.allocator());
     var p = try parser.Parser.new(&l);
     var program = try p.parseProgram();
     var env = object.Environment.init(std.testing.allocator);
     defer env.deinit();
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     return try eval(ast.Node.init(&program), &env, arena.allocator());
 }
 

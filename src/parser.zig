@@ -557,7 +557,8 @@ const TestSetup = struct {
 };
 
 fn setupTestParser(input: []const u8) !TestSetup {
-    var l = lexer.Lexer.new(input);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var l = lexer.Lexer.init(input, arena.allocator());
     var p = try Parser.new(&l);
     const program = try p.parseProgram();
     return TestSetup{ .parser = p, .lexer = l, .program = program };

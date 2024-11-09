@@ -6,7 +6,7 @@ pub const Token = struct {
     token_type: TokenType = undefined,
     literal: []const u8 = undefined,
 
-    pub fn new(token_type: TokenType, char: u8, allocator: std.mem.Allocator) !Token {
+    pub fn init(token_type: TokenType, char: u8, allocator: std.mem.Allocator) !Token {
         return Token{ .token_type = token_type, .literal = try allocator.dupe(u8, &.{ char }) };
     }
 

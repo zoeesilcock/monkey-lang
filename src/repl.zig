@@ -26,22 +26,22 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
     const stdin = in.reader();
     var input_buffer: [1024]u8 = undefined;
 
-    var env_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var env = object.Environment.init(env_arena.allocator());
+    var permanent_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var env = object.Environment.init(permanent_arena.allocator());
     defer env.deinit();
-
-    var eval_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer eval_arena.deinit();
 
     while (true) {
         _ = try stdout.write(PROMPT);
 
         const input = try stdin.readUntilDelimiter(&input_buffer, '\n');
 
-        var l = Lexer.new(input);
-        defer l.deinit();
-        var p = try Parser.new(&l);
+        var transient_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer transient_arena.deinit();
 
+        var l = Lexer.init(input, transient_arena.allocator());
+        defer l.deinit();
+
+        var p = try Parser.new(&l);
         var program = try p.parseProgram();
 
         if (p.errors.len > 0) {
@@ -49,8 +49,8 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
             continue;
         }
 
-        if (try evaluator.eval(ast.Node.init(&program), &env, eval_arena.allocator())) |evaluated| {
-            try stdout.print("{s}\n", .{ evaluated.inspect(eval_arena.allocator()) });
+        if (try evaluator.eval(ast.Node.init(&program), &env, permanent_arena.allocator())) |evaluated| {
+            try stdout.print("{s}\n", .{ evaluated.inspect(transient_arena.allocator()) });
         }
     }
 }

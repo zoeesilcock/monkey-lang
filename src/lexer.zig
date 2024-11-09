@@ -8,15 +8,18 @@ pub const Lexer = struct {
     position: u32 = 0,
     read_position: u32 = 0,
     char: u8 = 0,
-    arena: std.heap.ArenaAllocator,
+    allocator: std.mem.Allocator,
 
-    pub fn new(input: []const u8) Lexer {
-        const arena = std.heap.ArenaAllocator.init(std.heap.page_allocator); 
-        var result = Lexer{ .input = input, .arena = arena };
+    pub fn init(input: []const u8, allocator: std.mem.Allocator) Lexer {
+        var result = Lexer{ .input = input, .allocator = allocator };
 
         result.readChar();
 
         return result;
+    }
+
+    pub fn deinit(self: *Lexer) void {
+        _ = self;
     }
 
     fn readChar(self: *Lexer) void {
@@ -68,7 +71,7 @@ pub const Lexer = struct {
                 if (self.peekChar() == '=') {
                     const char1 = self.char;
                     self.readChar();
-                    result.literal = try self.arena.allocator().dupe(u8, &.{ char1, self.char });
+                    result.literal = try self.allocator.dupe(u8, &.{ char1, self.char });
                     result.token_type = token.EQ;
                 } else {
                     result = try self.newToken(token.ASSIGN, self.char);
@@ -80,7 +83,7 @@ pub const Lexer = struct {
                 if (self.peekChar() == '=') {
                     const char1 = self.char;
                     self.readChar();
-                    result.literal = try self.arena.allocator().dupe(u8, &.{ char1, self.char });
+                    result.literal = try self.allocator.dupe(u8, &.{ char1, self.char });
                     result.token_type = token.NOT_EQ;
                 } else {
                     result = try self.newToken(token.BANG, self.char);
@@ -118,7 +121,7 @@ pub const Lexer = struct {
     }
 
     fn newToken(self: *Lexer, token_type: token.TokenType, char: u8) !Token {
-        return try Token.new(token_type, char, self.arena.allocator());
+        return try Token.init(token_type, char, self.allocator);
     }
 
     fn isLetter(char: u8) bool {
@@ -133,10 +136,6 @@ pub const Lexer = struct {
         while (self.char == ' ' or self.char == '\t' or self.char == '\n' or self.char == '\r') {
             self.readChar();
         }
-    }
-
-    pub fn deinit(self: *Lexer) void {
-        self.arena.deinit();
     }
 };
 
@@ -163,7 +162,9 @@ test "next token" {
         \\10 != 9;
     ;
 
-    var lexer = Lexer.new(input);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var lexer = Lexer.init(input, arena.allocator());
     defer lexer.deinit();
 
     try testTokenEquality(Token{ .token_type = token.LET, .literal = "let" }, try lexer.nextToken());
