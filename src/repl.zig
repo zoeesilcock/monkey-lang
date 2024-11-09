@@ -4,6 +4,7 @@ const token = @import("token.zig");
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 const evaluator = @import("evaluator.zig");
+const object = @import("object.zig");
 
 const PROMPT = ">> ";
 const MONKEY_FACE =
@@ -25,6 +26,13 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
     const stdin = in.reader();
     var input_buffer: [1024]u8 = undefined;
 
+    var env_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var env = object.Environment.init(env_arena.allocator());
+    defer env.deinit();
+
+    var eval_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer eval_arena.deinit();
+
     while (true) {
         _ = try stdout.write(PROMPT);
 
@@ -41,10 +49,8 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
             continue;
         }
 
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
-        if (try evaluator.eval(ast.Node.init(&program), arena.allocator())) |evaluated| {
-            try stdout.print("{s}\n", .{ evaluated.inspect(p.arena.allocator()) });
+        if (try evaluator.eval(ast.Node.init(&program), &env, eval_arena.allocator())) |evaluated| {
+            try stdout.print("{s}\n", .{ evaluated.inspect(eval_arena.allocator()) });
         }
     }
 }

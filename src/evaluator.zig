@@ -24,24 +24,24 @@ fn isError(opt_object: ?object.Object) bool {
     return result;
 }
 
-pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+pub fn eval(node: ast.Node, env: *object.Environment, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     switch (node.node_type) {
         .Program => {
             const program: *ast.Program = node.unwrap(ast.Program);
-            return try evalProgram(program, allocator);
+            return try evalProgram(program, env, allocator);
         },
         .BlockStatement => {
             const block: *ast.BlockStatement = node.unwrap(ast.BlockStatement);
-            return try evalBlockStatement(block, allocator);
+            return try evalBlockStatement(block, env, allocator);
         },
         .ExpressionStatement => {
             const stmt: *ast.ExpressionStatement = node.unwrap(ast.ExpressionStatement);
-            return evalExpression(stmt.expression, allocator);
+            return evalExpression(stmt.expression, env, allocator);
         },
         .ReturnStatement => {
             const return_stmt: *ast.ReturnStatement = node.unwrap(ast.ReturnStatement);
             if (return_stmt.return_value) |return_value| {
-                const opt_value = try evalExpression(return_value, allocator);
+                const opt_value = try evalExpression(return_value, env, allocator);
 
                 if (isError(opt_value)) {
                     return opt_value;
@@ -51,6 +51,22 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
                     var result: *object.ReturnValue = try allocator.create(object.ReturnValue);
                     result.value = value;
                     return object.Object.init(result);
+                }
+            }
+
+            return null;
+        },
+        .LetStatement => {
+            const let_stmt: *ast.LetStatement = node.unwrap(ast.LetStatement);
+            if (let_stmt.value) |let_expression| {
+                const opt_value = try evalExpression(let_expression, env, allocator);
+
+                if (isError(opt_value)) {
+                    return opt_value;
+                }
+
+                if (opt_value) |value| {
+                    _ = try env.set(let_stmt.name.value, value);
                 }
             }
 
@@ -67,7 +83,7 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
         },
         .PrefixExpression => {
             const expression: *ast.PrefixExpression = node.unwrap(ast.PrefixExpression);
-            const right = try evalExpression(expression.right, allocator);
+            const right = try evalExpression(expression.right, env, allocator);
 
             if (isError(right)) {
                 return right;
@@ -77,8 +93,8 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
         },
         .InfixExpression => {
             const expression: *ast.InfixExpression = node.unwrap(ast.InfixExpression);
-            const right = try evalExpression(expression.right, allocator);
-            const left = try evalExpression(expression.left, allocator);
+            const right = try evalExpression(expression.right, env, allocator);
+            const left = try evalExpression(expression.left, env, allocator);
 
             if (isError(left)) {
                 return left;
@@ -92,20 +108,24 @@ pub fn eval(node: ast.Node, allocator: std.mem.Allocator) std.mem.Allocator.Erro
         },
         .IfExpression => {
             const if_expression: *ast.IfExpression = node.unwrap(ast.IfExpression);
-            return try evalIfExpression(if_expression, allocator);
+            return try evalIfExpression(if_expression, env, allocator);
+        },
+        .Identifier => {
+            const identifier: *ast.Identifier = node.unwrap(ast.Identifier);
+            return try evalIdentifier(identifier, env, allocator);
         },
         else => {
-            std.debug.print("Unexpected Node type: {?}\n", .{node.node_type});
+            std.debug.print("Unexpected Node type in eval: {?}\n", .{node.node_type});
             return null;
         },
     }
 }
 
-fn evalProgram(program: *ast.Program, allocator: std.mem.Allocator) !?object.Object {
+fn evalProgram(program: *ast.Program, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
     var result: ?object.Object = null;
 
     for (program.statements) |*stmt| {
-        if (try evalStatement(stmt, allocator)) |evaluated| {
+        if (try evalStatement(stmt, env, allocator)) |evaluated| {
             result = evaluated;
 
             if (evaluated.inner_type == object.ObjectInnerType.ReturnValue) {
@@ -120,11 +140,11 @@ fn evalProgram(program: *ast.Program, allocator: std.mem.Allocator) !?object.Obj
     return result;
 }
 
-fn evalBlockStatement(block: *ast.BlockStatement, allocator: std.mem.Allocator) !?object.Object {
+fn evalBlockStatement(block: *ast.BlockStatement, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
     var result: ?object.Object = null;
 
     for (block.statements) |*stmt| {
-        result = try evalStatement(stmt, allocator);
+        result = try evalStatement(stmt, env, allocator);
 
         if (result) |res| {
             if (std.mem.eql(u8, res.objectType(), object.RETURN_VALUE_OBJ) or
@@ -138,12 +158,13 @@ fn evalBlockStatement(block: *ast.BlockStatement, allocator: std.mem.Allocator) 
     return result;
 }
 
-fn evalStatement(stmt: *const ast.Statement, allocator: std.mem.Allocator) !?object.Object {
+fn evalStatement(stmt: *const ast.Statement, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
     var result: ?object.Object = null;
 
     switch (stmt.statement_type) {
-        .ExpressionStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ExpressionStatement)), allocator),
-        .ReturnStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ReturnStatement)), allocator),
+        .ExpressionStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ExpressionStatement)), env, allocator),
+        .ReturnStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ReturnStatement)), env, allocator),
+        .LetStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.LetStatement)), env, allocator),
         else => {
             std.debug.print("Unexpected statement type in evalStatements: {?}\n", .{stmt.statement_type});
             unreachable;
@@ -153,16 +174,17 @@ fn evalStatement(stmt: *const ast.Statement, allocator: std.mem.Allocator) !?obj
     return result;
 }
 
-fn evalExpression(opt_expression: ?ast.Expression, allocator: std.mem.Allocator) !?object.Object {
+fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
     var result: ?object.Object = null;
 
     if (opt_expression) |*expression| {
         switch (expression.expression_type) {
-            .IntegerLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.IntegerLiteral)), allocator),
-            .BooleanLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.BooleanLiteral)), allocator),
-            .PrefixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.PrefixExpression)), allocator),
-            .InfixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.InfixExpression)), allocator),
-            .IfExpression => result = try eval(ast.Node.init(expression.unwrap(ast.IfExpression)), allocator),
+            .IntegerLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.IntegerLiteral)), env, allocator),
+            .BooleanLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.BooleanLiteral)), env, allocator),
+            .PrefixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.PrefixExpression)), env, allocator),
+            .InfixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.InfixExpression)), env, allocator),
+            .IfExpression => result = try eval(ast.Node.init(expression.unwrap(ast.IfExpression)), env, allocator),
+            .Identifier => result = try eval(ast.Node.init(expression.unwrap(ast.Identifier)), env, allocator),
             else => {
                 std.debug.print("Unexpected expression type in evalExpression: {?}\n", .{expression.expression_type});
                 unreachable;
@@ -298,9 +320,9 @@ fn evalIntegerInfixExpression(
     return result;
 }
 
-fn evalIfExpression(if_expression: *ast.IfExpression, allocator: std.mem.Allocator) !?object.Object {
+fn evalIfExpression(if_expression: *ast.IfExpression, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
     var result: ?object.Object = null;
-    const opt_condition = try evalExpression(if_expression.condition, allocator);
+    const opt_condition = try evalExpression(if_expression.condition, env, allocator);
 
     if (isError(opt_condition)) {
         return opt_condition;
@@ -309,13 +331,25 @@ fn evalIfExpression(if_expression: *ast.IfExpression, allocator: std.mem.Allocat
     if (opt_condition) |condition| {
         if (isTruthy(condition)) {
             if (if_expression.consequence) |consequence| {
-                result = try eval(ast.Node.init(consequence), allocator);
+                result = try eval(ast.Node.init(consequence), env, allocator);
             }
         } else {
             if (if_expression.alternative) |alternative| {
-                result = try eval(ast.Node.init(alternative), allocator);
+                result = try eval(ast.Node.init(alternative), env, allocator);
             }
         }
+    }
+
+    return result;
+}
+
+fn evalIdentifier(identifier: *ast.Identifier, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
+    var result: ?object.Object = null;
+
+    if (env.get(identifier.value)) |value| {
+        result = value;
+    } else {
+        return try newError("identifier not found: {s}", .{ identifier.value }, allocator);
     }
 
     return result;
@@ -367,9 +401,11 @@ fn testEval(input: []const u8) !?object.Object {
     var l = lexer.Lexer.new(input);
     var p = try parser.Parser.new(&l);
     var program = try p.parseProgram();
+    var env = object.Environment.init(std.testing.allocator);
+    defer env.deinit();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    return try eval(ast.Node.init(&program), arena.allocator());
+    return try eval(ast.Node.init(&program), &env, arena.allocator());
 }
 
 fn testIntegerObject(obj: object.Object, expected_value: i64) !void {
@@ -522,6 +558,10 @@ test "error handling" {
         ,
         "unknown operator: BOOLEAN + BOOLEAN",
     );
+    try testErrorHandling(
+        "foobar",
+        "identifier not found: foobar",
+    );
 }
 
 fn testErrorHandling(input: []const u8, expected_error: []const u8) !void {
@@ -544,4 +584,25 @@ fn testErrorObject(obj: object.Object, expected_message: []const u8) !void {
     const error_object: *object.Error = obj.unwrap(object.Error);
 
     try std.testing.expectEqualSlices(u8, expected_message, error_object.message);
+}
+
+test "let statements" {
+    try testLetStatement("let a = 5; a;", 5);
+    try testLetStatement("let a = 5 * 5; a;", 25);
+    try testLetStatement("let a = 5; let b = a; b;", 5);
+    try testLetStatement("let a = 5; let b = a; let c = a + b + 5; c;", 15);
+}
+
+fn testLetStatement(input: []const u8, expected_value: i64) !void {
+    if (try testEval(input)) |evaluated| {
+        switch (evaluated.inner_type) {
+            .Integer => try testIntegerObject(evaluated, expected_value),
+            else => {
+                std.debug.print("no integer received from statement\n", .{});
+                unreachable;
+            }
+        }
+    } else {
+        unreachable;
+    }
 }

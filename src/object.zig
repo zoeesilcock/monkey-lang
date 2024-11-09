@@ -144,3 +144,49 @@ pub const Error = struct {
         return std.fmt.allocPrint(allocator, "ERROR: {s}", .{ self.message }) catch "";
     }
 };
+
+pub const Environment = struct {
+    store: std.StringHashMap(Object),
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) Environment {
+        return Environment{ 
+            .store = std.StringHashMap(Object).init(allocator),
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *Environment) void {
+        var iterator = self.store.iterator();
+        while (iterator.next()) | entry | {
+            self.allocator.free(entry.key_ptr.*);
+        }
+        self.store.deinit();
+    }
+
+    pub fn get(self: *Environment, name: []const u8) ?Object {
+        return self.store.get(name);
+    }
+
+    pub fn set(self: *Environment, name: []const u8, value: Object) !Object {
+        try self.store.put(try self.allocator.dupe(u8, name), value);
+        return value;
+    }
+};
+
+test "environment" {
+    var env = Environment.init(std.testing.allocator);
+    defer env.deinit();
+
+    const expected_value: i64 = 5;
+    var test_object = Integer{ .value = expected_value };
+    _ = try env.set("a", Object.init(&test_object));
+
+    const opt_retreived = env.get("a");
+    try std.testing.expectEqual(false, opt_retreived == null);
+
+    if (opt_retreived) |retreived| {
+        const integer: *Integer = retreived.unwrap(Integer);
+        try std.testing.expectEqual(expected_value, integer.value);
+    }
+}
