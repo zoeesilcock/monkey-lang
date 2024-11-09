@@ -10,3 +10,7 @@ pub fn main() !void {
 
     try repl.start(out, in);
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

@@ -1,8 +1,8 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const token = @import("token.zig");
-const Lexer = @import("lexer.zig").Lexer;
-const Parser = @import("parser.zig").Parser;
+const lexer = @import("lexer.zig");
+const parser = @import("parser.zig");
 const evaluator = @import("evaluator.zig");
 const object = @import("object.zig");
 
@@ -38,10 +38,10 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
         var transient_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer transient_arena.deinit();
 
-        var l = Lexer.init(input, transient_arena.allocator());
+        var l = lexer.Lexer.init(input, transient_arena.allocator());
         defer l.deinit();
 
-        var p = try Parser.new(&l);
+        var p = try parser.Parser.new(&l);
         var program = try p.parseProgram();
 
         if (p.errors.len > 0) {
