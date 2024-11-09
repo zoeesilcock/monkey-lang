@@ -27,7 +27,7 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
     var input_buffer: [1024]u8 = undefined;
 
     var permanent_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var env = object.Environment.init(permanent_arena.allocator());
+    var env = try object.Environment.init(permanent_arena.allocator());
     defer env.deinit();
 
     while (true) {
@@ -49,7 +49,7 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
             continue;
         }
 
-        if (try evaluator.eval(ast.Node.init(&program), &env, permanent_arena.allocator())) |evaluated| {
+        if (try evaluator.eval(ast.Node.init(&program), env, permanent_arena.allocator())) |evaluated| {
             try stdout.print("{s}\n", .{ evaluated.inspect(transient_arena.allocator()) });
         }
     }

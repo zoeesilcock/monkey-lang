@@ -114,6 +114,33 @@ pub fn eval(node: ast.Node, env: *object.Environment, allocator: std.mem.Allocat
             const identifier: *ast.Identifier = node.unwrap(ast.Identifier);
             return try evalIdentifier(identifier, env, allocator);
         },
+        .FunctionLiteral => {
+            const fn_literal: *ast.FunctionLiteral = node.unwrap(ast.FunctionLiteral);
+            var fn_object: *object.Function = try allocator.create(object.Function);
+            fn_object.parameters = fn_literal.parameters;
+            fn_object.body = fn_literal.body;
+            fn_object.env = env;
+            return object.Object.init(fn_object);
+        },
+        .CallExpression => {
+            const call_expression: *ast.CallExpression = node.unwrap(ast.CallExpression);
+            const opt_function = try evalExpression(call_expression.function, env, allocator);
+
+            if (isError(opt_function)) {
+                return opt_function;
+            }
+
+            const args = try evalExpressions(call_expression.arguments, env, allocator);
+            if (args.len == 1 and isError(args[0])) {
+                return args[0];
+            }
+
+            if (opt_function) |function| {
+                return applyFunction(function, args, allocator);
+            }
+
+            return null;
+        },
         else => {
             std.debug.print("Unexpected Node type in eval: {?}\n", .{node.node_type});
             return null;
@@ -185,14 +212,27 @@ fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, all
             .InfixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.InfixExpression)), env, allocator),
             .IfExpression => result = try eval(ast.Node.init(expression.unwrap(ast.IfExpression)), env, allocator),
             .Identifier => result = try eval(ast.Node.init(expression.unwrap(ast.Identifier)), env, allocator),
-            else => {
-                std.debug.print("Unexpected expression type in evalExpression: {?}\n", .{expression.expression_type});
-                unreachable;
-            },
+            .FunctionLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.FunctionLiteral)), env, allocator),
+            .CallExpression => result = try eval(ast.Node.init(expression.unwrap(ast.CallExpression)), env, allocator),
         }
     }
 
     return result;
+}
+
+fn evalExpressions(expressions: []ast.Expression, env: *object.Environment, allocator: std.mem.Allocator) ![]object.Object {
+    var result = std.ArrayList(object.Object).init(allocator);
+
+    for (expressions) |e| {
+        if (try evalExpression(e, env, allocator)) |evaluated| {
+            try result.append(evaluated);
+            if (isError(evaluated)) {
+                break;
+            }
+        }
+    }
+
+    return try result.toOwnedSlice();
 }
 
 fn evalPrefixExpression(operator: []const u8, opt_right: ?object.Object, allocator: std.mem.Allocator) !?object.Object {
@@ -355,6 +395,41 @@ fn evalIdentifier(identifier: *ast.Identifier, env: *object.Environment, allocat
     return result;
 }
 
+fn applyFunction(function: object.Object, args: []object.Object, allocator: std.mem.Allocator) !?object.Object {
+    if (function.inner_type != .Function) {
+        return try newError("not a function: {s}", .{ function.objectType() }, allocator);
+    }
+
+    const fn_object: *object.Function = function.unwrap(object.Function);
+    const extended_env = try extendFunctionEnv(fn_object, args, allocator);
+    const evaluated = try eval(ast.Node.init(fn_object.body.?), extended_env, allocator);
+
+    return unwrapReturnValue(evaluated);
+}
+
+fn extendFunctionEnv(fn_object: *object.Function, args: []object.Object, allocator: std.mem.Allocator) !*object.Environment {
+    var env = try object.Environment.newEnclosed(fn_object.env, allocator);
+
+    for (fn_object.parameters, 0..) |param, param_index| {
+        _ = try env.set(param.value, args[param_index]);
+    }
+
+    return env;
+}
+
+fn unwrapReturnValue(opt_obj: ?object.Object) ?object.Object {
+    var result: ?object.Object = opt_obj;
+
+    if (opt_obj) |obj| {
+        if (obj.inner_type == .ReturnValue) {
+            const return_value: *object.ReturnValue = obj.unwrap(object.ReturnValue);
+            result = return_value.value;
+        }
+    }
+
+    return result;
+}
+
 fn isTruthy(obj: object.Object) bool {
     if (@intFromPtr(obj.ptr) == @intFromPtr(NULL)) {
         return false;
@@ -369,6 +444,15 @@ fn isTruthy(obj: object.Object) bool {
 
 fn nativeBoolToBooleanObject(input: bool) *const object.Boolean {
     return if (input) TRUE else FALSE;
+}
+
+fn testEval(input: []const u8) !?object.Object {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var l = lexer.Lexer.init(input, arena.allocator());
+    var p = try parser.Parser.new(&l);
+    var program = try p.parseProgram();
+    const env = try object.Environment.init(arena.allocator());
+    return try eval(ast.Node.init(&program), env, arena.allocator());
 }
 
 test "eval integer expression" {
@@ -395,17 +479,6 @@ fn testEvalInteger(input: []const u8, expected_value: i64) !void {
     } else {
         unreachable;
     }
-}
-
-fn testEval(input: []const u8) !?object.Object {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var l = lexer.Lexer.init(input, arena.allocator());
-    var p = try parser.Parser.new(&l);
-    var program = try p.parseProgram();
-    var env = object.Environment.init(std.testing.allocator);
-    defer env.deinit();
-
-    return try eval(ast.Node.init(&program), &env, arena.allocator());
 }
 
 fn testIntegerObject(obj: object.Object, expected_value: i64) !void {
@@ -605,4 +678,58 @@ fn testLetStatement(input: []const u8, expected_value: i64) !void {
     } else {
         unreachable;
     }
+}
+
+test "functions" {
+    const input = "fn(x) { x + 2; };";
+    const expected_param = "x";
+    const expected_body = "(x + 2)";
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    if (try testEval(input)) |evaluated| {
+        try std.testing.expectEqual(evaluated.inner_type, .Function);
+
+        const fn_object: *object.Function = evaluated.unwrap(object.Function);
+
+        try std.testing.expectEqual(1, fn_object.parameters.len);
+
+        const param_name = fn_object.parameters[0].string(std.testing.allocator);
+        try std.testing.expectEqualSlices(u8, expected_param, param_name);
+
+        try std.testing.expectEqualSlices(u8, expected_body, fn_object.body.?.string(arena.allocator()));
+    } else {
+        unreachable;
+    }
+}
+
+test "function calls" {
+    try testFunctionCall("let identity = fn(x) { x; }; identity(5);", 5);
+    try testFunctionCall("let identity = fn(x) { return x; }; identity(5);", 5);
+    try testFunctionCall("let double = fn(x) { x * 2; }; double(5);", 10);
+    try testFunctionCall("let add = fn(x, y) { x + y; }; add(5, 5);", 10);
+    try testFunctionCall("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20);
+    try testFunctionCall("fn(x) { x; }(5)", 5);
+}
+
+fn testFunctionCall(input: []const u8, expected_value: i64) !void {
+    if (try testEval(input)) |evaluated| {
+        try testIntegerObject(evaluated, expected_value);
+    } else {
+        unreachable;
+    }
+}
+
+test "closures" {
+    const input =
+        \\let newAdder = fn(x) {
+        \\  fn(y) { x + y };
+        \\};
+        \\
+        \\let addTwo = newAdder(2);
+        \\addTwo(2);
+        ;
+
+    try testFunctionCall(input, 4);
 }

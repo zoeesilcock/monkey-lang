@@ -269,7 +269,7 @@ pub const Parser = struct {
 
         var identifier: *ast.Identifier = try self.arena.allocator().create(ast.Identifier);
         identifier.token = self.cur_token;
-        identifier.value = self.cur_token.literal;
+        identifier.value = try self.arena.allocator().dupe(u8, self.cur_token.literal);
         try identifiers.append(identifier);
 
         while (self.peekTokenIs(token.COMMA)) {
@@ -278,7 +278,7 @@ pub const Parser = struct {
 
             identifier = try self.arena.allocator().create(ast.Identifier);
             identifier.token = self.cur_token;
-            identifier.value = self.cur_token.literal;
+            identifier.value = try self.arena.allocator().dupe(u8, self.cur_token.literal);
             try identifiers.append(identifier);
         }
 

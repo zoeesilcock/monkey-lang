@@ -1,4 +1,5 @@
 const std = @import("std");
+const ast = @import("ast.zig");
 
 pub const ObjectType: type = []const u8;
 
@@ -6,7 +7,8 @@ pub const INTEGER_OBJ: ObjectType = "INTEGER";
 pub const BOOLEAN_OBJ: ObjectType = "BOOLEAN";
 pub const NULL_OBJ: ObjectType = "NULL";
 pub const RETURN_VALUE_OBJ = "RETURN_VALUE";
-pub const ERROR_OBJ = "ERROR_OBJ";
+pub const ERROR_OBJ = "ERROR";
+pub const FUNCTION_OBJ = "FUNCTION";
 
 pub const ObjectInnerType = enum {
     Integer,
@@ -14,6 +16,7 @@ pub const ObjectInnerType = enum {
     Null,
     ReturnValue,
     Error,
+    Function,
 };
 
 pub const Object = struct {
@@ -52,6 +55,7 @@ pub const Object = struct {
             *Null => ObjectInnerType.Null,
             *ReturnValue => ObjectInnerType.ReturnValue,
             *Error => ObjectInnerType.Error,
+            *Function => ObjectInnerType.Function,
             else => {
                 std.debug.print("Unsupported Object type: {?}\n", .{ Ptr });
                 unreachable;
@@ -145,15 +149,62 @@ pub const Error = struct {
     }
 };
 
+pub const Function = struct {
+    parameters: []*ast.Identifier,
+    body: ?*ast.BlockStatement,
+    env: *Environment,
+
+    pub fn objectType(self: Function) ObjectType {
+        _ = self;
+        return FUNCTION_OBJ;
+    }
+
+    pub fn inspect(self: Function, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "fn",
+            "(",
+        }) catch "";
+
+
+        for (self.parameters, 0..) |param, i| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                param.string(allocator),
+                if (i < self.parameters.len - 1) ", " else "",
+            }) catch "";
+        }
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            ") {\n",
+            if (self.body) |body| body.string(allocator) else "",
+            "\n}",
+        }) catch "";
+
+        return out;
+    }
+};
+
 pub const Environment = struct {
     store: std.StringHashMap(Object),
+    outer: ?*Environment,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) Environment {
-        return Environment{ 
-            .store = std.StringHashMap(Object).init(allocator),
-            .allocator = allocator,
-        };
+    pub fn init(allocator: std.mem.Allocator) !*Environment {
+        var env = try allocator.create(Environment);
+        env.store = std.StringHashMap(Object).init(allocator);
+        env.allocator = allocator;
+        env.outer = null;
+        return env;
+    }
+
+    pub fn newEnclosed(outer: *Environment, allocator: std.mem.Allocator) !*Environment {
+        var env = try Environment.init(allocator);
+        env.outer = outer;
+        return env;
     }
 
     pub fn deinit(self: *Environment) void {
@@ -165,7 +216,15 @@ pub const Environment = struct {
     }
 
     pub fn get(self: *Environment, name: []const u8) ?Object {
-        return self.store.get(name);
+        var result = self.store.get(name);
+
+        if (result == null) {
+            if (self.outer) |outer| {
+                result = outer.get(name);
+            }
+        }
+
+        return result;
     }
 
     pub fn set(self: *Environment, name: []const u8, value: Object) !Object {
@@ -175,7 +234,8 @@ pub const Environment = struct {
 };
 
 test "environment" {
-    var env = Environment.init(std.testing.allocator);
+    var env = try Environment.init(std.testing.allocator);
+    defer std.testing.allocator.destroy(env);
     defer env.deinit();
 
     const expected_value: i64 = 5;
