@@ -18,7 +18,8 @@ const OperatorPrecedence = enum(u32) {
 };
 
 pub const Parser = struct {
-    arena: std.heap.ArenaAllocator,
+    allocator: std.mem.Allocator,
+    temp_allocator: std.mem.Allocator,
 
     l: *lexer.Lexer,
     errors: [][]const u8,
@@ -31,15 +32,15 @@ pub const Parser = struct {
 
     precedences: std.StringHashMap(OperatorPrecedence),
 
-    pub fn new(l: *lexer.Lexer) !Parser {
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    pub fn new(l: *lexer.Lexer, allocator: std.mem.Allocator, temp_allocator: std.mem.Allocator) !Parser {
         var p = Parser{
             .l = l,
-            .arena = arena,
+            .allocator =  allocator,
+            .temp_allocator = temp_allocator,
             .errors = &.{},
-            .prefixParseFns = std.StringHashMap(prefixParseFn).init(arena.allocator()),
-            .infixParseFns = std.StringHashMap(infixParseFn).init(arena.allocator()),
-            .precedences = std.StringHashMap(OperatorPrecedence).init(arena.allocator()),
+            .prefixParseFns = std.StringHashMap(prefixParseFn).init(temp_allocator),
+            .infixParseFns = std.StringHashMap(infixParseFn).init(temp_allocator),
+            .precedences = std.StringHashMap(OperatorPrecedence).init(temp_allocator),
         };
 
         try p.precedences.put(token.EQ, .EQUALS);
@@ -78,11 +79,6 @@ pub const Parser = struct {
         return p;
     }
 
-    pub fn deinit(self: *Parser, program: *ast.Program) void {
-        self.arena.allocator().free(program.statements);
-        self.arena.deinit();
-    }
-
     pub fn getErrors(self: *Parser) [][]const u8 {
         return self.errors;
     }
@@ -92,7 +88,7 @@ pub const Parser = struct {
             .statements = undefined,
         };
 
-        var statements = std.ArrayList(ast.Statement).init(self.arena.allocator());
+        var statements = std.ArrayList(ast.Statement).init(self.temp_allocator);
 
         while (!std.mem.eql(u8, self.cur_token.token_type, token.EOF)) {
             if (try self.parseStatement()) |stmt| {
@@ -147,11 +143,11 @@ pub const Parser = struct {
             return null;
         }
 
-        var name = try self.arena.allocator().create(ast.Identifier);
+        var name = try self.allocator.create(ast.Identifier);
         name.token = self.cur_token;
         name.value = self.cur_token.literal;
 
-        var stmt: *ast.LetStatement = try self.arena.allocator().create(ast.LetStatement);
+        var stmt: *ast.LetStatement = try self.allocator.create(ast.LetStatement);
         stmt.token = tok;
         stmt.name = name;
         stmt.value = null;
@@ -171,7 +167,7 @@ pub const Parser = struct {
     }
 
     fn parseReturnStatement(self: *Parser) !?*ast.ReturnStatement {
-        var stmt: *ast.ReturnStatement = try self.arena.allocator().create(ast.ReturnStatement);
+        var stmt: *ast.ReturnStatement = try self.allocator.create(ast.ReturnStatement);
         stmt.token = self.cur_token;
 
         try self.nextToken();
@@ -186,12 +182,12 @@ pub const Parser = struct {
     }
 
     fn parseBlockStatement(self: *Parser) !?*ast.BlockStatement {
-        var block: *ast.BlockStatement = try self.arena.allocator().create(ast.BlockStatement);
+        var block: *ast.BlockStatement = try self.allocator.create(ast.BlockStatement);
         block.token = self.cur_token;
 
         try self.nextToken();
 
-        var statements = std.ArrayList(ast.Statement).init(self.arena.allocator());
+        var statements = std.ArrayList(ast.Statement).init(self.allocator);
         while (!self.curTokenIs(token.RBRACE) and !self.curTokenIs(token.EOF)) {
             if (try self.parseStatement()) |stmt| {
                 try statements.append(stmt);
@@ -212,7 +208,7 @@ pub const Parser = struct {
         var stmt: ?*ast.ExpressionStatement = null;
 
         if (try self.parseExpression(.LOWEST)) |expression| {
-            stmt = try self.arena.allocator().create(ast.ExpressionStatement);
+            stmt = try self.allocator.create(ast.ExpressionStatement);
             stmt.?.token = self.cur_token;
             stmt.?.expression = expression;
 
@@ -258,7 +254,7 @@ pub const Parser = struct {
         tracer.trace(@src().fn_name);
         defer tracer.untrace(@src().fn_name);
 
-        var identifiers = std.ArrayList(*ast.Identifier).init(self.arena.allocator());
+        var identifiers = std.ArrayList(*ast.Identifier).init(self.allocator);
 
         if (self.peekTokenIs(token.RPAREN)) {
             try self.nextToken();
@@ -267,18 +263,18 @@ pub const Parser = struct {
 
         try self.nextToken();
 
-        var identifier: *ast.Identifier = try self.arena.allocator().create(ast.Identifier);
+        var identifier: *ast.Identifier = try self.allocator.create(ast.Identifier);
         identifier.token = self.cur_token;
-        identifier.value = try self.arena.allocator().dupe(u8, self.cur_token.literal);
+        identifier.value = try self.allocator.dupe(u8, self.cur_token.literal);
         try identifiers.append(identifier);
 
         while (self.peekTokenIs(token.COMMA)) {
             try self.nextToken();
             try self.nextToken();
 
-            identifier = try self.arena.allocator().create(ast.Identifier);
+            identifier = try self.allocator.create(ast.Identifier);
             identifier.token = self.cur_token;
-            identifier.value = try self.arena.allocator().dupe(u8, self.cur_token.literal);
+            identifier.value = try self.allocator.dupe(u8, self.cur_token.literal);
             try identifiers.append(identifier);
         }
 
@@ -293,7 +289,7 @@ pub const Parser = struct {
         tracer.trace(@src().fn_name);
         defer tracer.untrace(@src().fn_name);
 
-        var args = std.ArrayList(ast.Expression).init(self.arena.allocator());
+        var args = std.ArrayList(ast.Expression).init(self.allocator);
 
         if (self.peekTokenIs(token.LPAREN)) {
             try self.nextToken();
@@ -322,10 +318,10 @@ pub const Parser = struct {
     }
 
     fn noPrefixParseFnError(self: *Parser, token_type: token.TokenType) !void {
-        var error_array = try std.ArrayList([]const u8).initCapacity(self.arena.allocator(), self.errors.len);
+        var error_array = try std.ArrayList([]const u8).initCapacity(self.temp_allocator, self.errors.len);
         try error_array.appendSlice(self.errors);
         try error_array.append(try std.fmt.allocPrint(
-            self.arena.allocator(),
+            self.temp_allocator,
             "no prefix parse function for {s} found\n",
             .{token_type},
         ));
@@ -356,11 +352,11 @@ pub const Parser = struct {
     }
 
     fn peekError(self: *Parser, t: token.TokenType) !void {
-        var error_array = try std.ArrayList([]const u8).initCapacity(self.arena.allocator(), self.errors.len);
+        var error_array = try std.ArrayList([]const u8).initCapacity(self.temp_allocator, self.errors.len);
         try error_array.appendSlice(self.errors);
 
         const message = try std.fmt.allocPrint(
-            self.arena.allocator(),
+            self.temp_allocator,
             "expected next token to be {s}, got {s} instead\n",
             .{ t, self.peek_token.token_type },
         );
@@ -390,9 +386,9 @@ fn parseIdentifier(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
 
-    var identifier: *ast.Identifier = try self.arena.allocator().create(ast.Identifier);
+    var identifier: *ast.Identifier = try self.allocator.create(ast.Identifier);
     identifier.token = self.cur_token;
-    identifier.value = try self.arena.allocator().dupe(u8, self.cur_token.literal);
+    identifier.value = try self.allocator.dupe(u8, self.cur_token.literal);
 
     return ast.Expression.init(identifier);
 }
@@ -405,7 +401,7 @@ fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 
     const opt_value: ?i64 = std.fmt.parseInt(i64, self.cur_token.literal, 10) catch null;
     if (opt_value) |value| {
-        var lit: *ast.IntegerLiteral = try self.arena.allocator().create(ast.IntegerLiteral);
+        var lit: *ast.IntegerLiteral = try self.allocator.create(ast.IntegerLiteral);
         lit.token = self.cur_token;
         lit.value = value;
         expression = ast.Expression.init(lit);
@@ -418,7 +414,7 @@ fn parseBooleanLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
 
-    var lit: *ast.BooleanLiteral = try self.arena.allocator().create(ast.BooleanLiteral);
+    var lit: *ast.BooleanLiteral = try self.allocator.create(ast.BooleanLiteral);
     lit.token = self.cur_token;
     lit.value = self.curTokenIs(token.TRUE);
 
@@ -444,7 +440,7 @@ fn parseIfExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
 
-    var expression: *ast.IfExpression = try self.arena.allocator().create(ast.IfExpression);
+    var expression: *ast.IfExpression = try self.allocator.create(ast.IfExpression);
     expression.token = self.cur_token;
 
     if (!try self.expectPeek(token.LPAREN)) {
@@ -482,9 +478,9 @@ fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression 
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
 
-    var expression: *ast.PrefixExpression = try self.arena.allocator().create(ast.PrefixExpression);
+    var expression: *ast.PrefixExpression = try self.allocator.create(ast.PrefixExpression);
     expression.token = self.cur_token;
-    expression.operator = try self.arena.allocator().dupe(u8, self.cur_token.literal);
+    expression.operator = try self.allocator.dupe(u8, self.cur_token.literal);
 
     try self.nextToken();
     expression.right = try self.parseExpression(.PREFIX);
@@ -496,9 +492,9 @@ fn parseInfixExpression(self: *Parser, left: ast.Expression) std.mem.Allocator.E
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
 
-    var expression: *ast.InfixExpression = try self.arena.allocator().create(ast.InfixExpression);
+    var expression: *ast.InfixExpression = try self.allocator.create(ast.InfixExpression);
     expression.token = self.cur_token;
-    expression.operator = try self.arena.allocator().dupe(u8, self.cur_token.literal);
+    expression.operator = try self.allocator.dupe(u8, self.cur_token.literal);
     expression.left = left;
 
     const precedence = self.curPrecedence();
@@ -512,7 +508,7 @@ fn parseFunctionLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
 
-    var lit: *ast.FunctionLiteral = try self.arena.allocator().create(ast.FunctionLiteral);
+    var lit: *ast.FunctionLiteral = try self.allocator.create(ast.FunctionLiteral);
     lit.token = self.cur_token;
     lit.body = null;
 
@@ -537,7 +533,7 @@ fn parseCallExpression(self: *Parser, function: ast.Expression) std.mem.Allocato
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
 
-    var expression: *ast.CallExpression = try self.arena.allocator().create(ast.CallExpression);
+    var expression: *ast.CallExpression = try self.allocator.create(ast.CallExpression);
     expression.token = self.cur_token;
     expression.function = function;
     expression.arguments = try self.parseCallArguments() orelse &.{};
@@ -549,19 +545,20 @@ const TestSetup = struct {
     parser: Parser,
     lexer: lexer.Lexer,
     program: ast.Program,
+    arena: std.heap.ArenaAllocator,
 
     pub fn deinit(self: *TestSetup) void {
         self.lexer.deinit();
-        self.parser.deinit(&self.program);
+        self.arena.deinit();
     }
 };
 
 fn setupTestParser(input: []const u8) !TestSetup {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     var l = lexer.Lexer.init(input, arena.allocator());
-    var p = try Parser.new(&l);
+    var p = try Parser.new(&l, arena.allocator(), arena.allocator());
     const program = try p.parseProgram();
-    return TestSetup{ .parser = p, .lexer = l, .program = program };
+    return TestSetup{ .parser = p, .lexer = l, .program = program, .arena = arena };
 }
 
 const TestValueTypes = enum {
@@ -909,7 +906,7 @@ fn testOperatorPrecedenceParsing(input: []const u8, expected: []const u8) !void 
 
     try expectErrors(&setup.parser, 0);
 
-    try std.testing.expectEqualSlices(u8, expected, setup.program.string(setup.parser.arena.allocator()));
+    try std.testing.expectEqualSlices(u8, expected, setup.program.string(setup.arena.allocator()));
 }
 
 test "if expression" {

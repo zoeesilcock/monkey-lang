@@ -449,7 +449,7 @@ fn nativeBoolToBooleanObject(input: bool) *const object.Boolean {
 fn testEval(input: []const u8) !?object.Object {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     var l = lexer.Lexer.init(input, arena.allocator());
-    var p = try parser.Parser.new(&l);
+    var p = try parser.Parser.new(&l, arena.allocator(), arena.allocator());
     var program = try p.parseProgram();
     const env = try object.Environment.init(arena.allocator());
     return try eval(ast.Node.init(&program), env, arena.allocator());

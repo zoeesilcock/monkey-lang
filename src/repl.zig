@@ -35,13 +35,13 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
 
         const input = try stdin.readUntilDelimiter(&input_buffer, '\n');
 
-        var transient_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer transient_arena.deinit();
+        var temporary_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer temporary_arena.deinit();
 
-        var l = lexer.Lexer.init(input, transient_arena.allocator());
+        var l = lexer.Lexer.init(input, temporary_arena.allocator());
         defer l.deinit();
 
-        var p = try parser.Parser.new(&l);
+        var p = try parser.Parser.new(&l, permanent_arena.allocator(), temporary_arena.allocator());
         var program = try p.parseProgram();
 
         if (p.errors.len > 0) {
@@ -50,7 +50,7 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
         }
 
         if (try evaluator.eval(ast.Node.init(&program), env, permanent_arena.allocator())) |evaluated| {
-            try stdout.print("{s}\n", .{ evaluated.inspect(transient_arena.allocator()) });
+            try stdout.print("{s}\n", .{ evaluated.inspect(temporary_arena.allocator()) });
         }
     }
 }
