@@ -28,7 +28,8 @@ pub const EOF = "EOF";
 
 // Identifiers + literals
 pub const IDENT = "IDENT"; // add, foobar, x, y, ...
-pub const INT = "INT";   // 1343456
+pub const INT = "INT"; // 1343456
+pub const STRING = "STRING"; // "foobar"
 
 // Operators
 pub const ASSIGN = "=";

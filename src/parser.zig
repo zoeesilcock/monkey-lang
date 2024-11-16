@@ -55,6 +55,7 @@ pub const Parser = struct {
 
         try p.registerPrefix(token.IDENT, parseIdentifier);
         try p.registerPrefix(token.INT, parseIntegerLiteral);
+        try p.registerPrefix(token.STRING, parseStringLiteral);
         try p.registerPrefix(token.BANG, parsePrefixExpression);
         try p.registerPrefix(token.MINUS, parsePrefixExpression);
         try p.registerPrefix(token.TRUE, parseBooleanLiteral);
@@ -291,7 +292,7 @@ pub const Parser = struct {
 
         var args = std.ArrayList(ast.Expression).init(self.allocator);
 
-        if (self.peekTokenIs(token.LPAREN)) {
+        if (self.peekTokenIs(token.RPAREN)) {
             try self.nextToken();
             return try args.toOwnedSlice();
         }
@@ -408,6 +409,17 @@ fn parseIntegerLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     }
 
     return expression;
+}
+
+fn parseStringLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
+    var literal: *ast.StringLiteral = try self.allocator.create(ast.StringLiteral);
+    literal.token = self.cur_token;
+    literal.value = self.cur_token.literal;
+
+    return ast.Expression.init(literal);
 }
 
 fn parseBooleanLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
@@ -1015,4 +1027,17 @@ test "call expressions" {
     try testLiteralExpression(.{ .int_value = 1 }, call_expression.arguments[0]);
     try testInfixEpression(.{ .int_value = 2 }, "*", .{ .int_value = 3 }, call_expression.arguments[1]);
     try testInfixEpression(.{ .int_value = 4 }, "+", .{ .int_value = 5 }, call_expression.arguments[2]);
+}
+
+test "string literal expression" {
+    const input = "\"hello world\"";
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+    const string_literal: *ast.StringLiteral = stmt.expression.?.unwrap(ast.StringLiteral);
+    try std.testing.expectEqualSlices(u8, "hello world", string_literal.value);
 }

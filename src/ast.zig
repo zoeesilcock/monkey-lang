@@ -13,6 +13,7 @@ const NodeType = enum {
     IntegerLiteral,
     BooleanLiteral,
     FunctionLiteral,
+    StringLiteral,
     PrefixExpression,
     InfixExpression,
     IfExpression,
@@ -61,6 +62,7 @@ pub const Node = struct {
             *IntegerLiteral => NodeType.IntegerLiteral,
             *BooleanLiteral => NodeType.BooleanLiteral,
             *FunctionLiteral => NodeType.FunctionLiteral,
+            *StringLiteral => NodeType.StringLiteral,
             *PrefixExpression => NodeType.PrefixExpression,
             *InfixExpression => NodeType.InfixExpression,
             *IfExpression => NodeType.IfExpression,
@@ -330,11 +332,12 @@ pub const BlockStatement = struct {
     }
 };
 
-const ExpressionType = enum {
+pub const ExpressionType = enum {
     Identifier,
     IntegerLiteral,
     BooleanLiteral,
     FunctionLiteral,
+    StringLiteral,
     PrefixExpression,
     InfixExpression,
     IfExpression,
@@ -381,6 +384,7 @@ pub const Expression = struct {
             *IntegerLiteral => ExpressionType.IntegerLiteral,
             *BooleanLiteral => ExpressionType.BooleanLiteral,
             *FunctionLiteral => ExpressionType.FunctionLiteral,
+            *StringLiteral => ExpressionType.StringLiteral,
             *PrefixExpression => ExpressionType.PrefixExpression,
             *InfixExpression => ExpressionType.InfixExpression,
             *IfExpression => ExpressionType.IfExpression,
@@ -514,6 +518,24 @@ pub const FunctionLiteral = struct {
         }
 
         return out;
+    }
+};
+
+pub const StringLiteral = struct {
+    token: token.Token,
+    value: []const u8,
+
+    pub fn tokenLiteral(self: *StringLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: StringLiteral) void {
+        _ = self;
+    }
+
+    pub fn string(self: *StringLiteral, allocator: std.mem.Allocator) []const u8 {
+        _ = allocator;
+        return self.token.literal;
     }
 };
 

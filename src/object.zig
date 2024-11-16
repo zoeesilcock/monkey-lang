@@ -5,6 +5,7 @@ pub const ObjectType: type = []const u8;
 
 pub const INTEGER_OBJ: ObjectType = "INTEGER";
 pub const BOOLEAN_OBJ: ObjectType = "BOOLEAN";
+pub const STRING_OBJ: ObjectType = "STRING";
 pub const NULL_OBJ: ObjectType = "NULL";
 pub const RETURN_VALUE_OBJ = "RETURN_VALUE";
 pub const ERROR_OBJ = "ERROR";
@@ -13,6 +14,7 @@ pub const FUNCTION_OBJ = "FUNCTION";
 pub const ObjectInnerType = enum {
     Integer,
     Boolean,
+    String,
     Null,
     ReturnValue,
     Error,
@@ -52,6 +54,7 @@ pub const Object = struct {
         const inner_type: ObjectInnerType = switch(Ptr) {
             *Integer => ObjectInnerType.Integer,
             *Boolean => ObjectInnerType.Boolean,
+            *String => ObjectInnerType.String,
             *Null => ObjectInnerType.Null,
             *ReturnValue => ObjectInnerType.ReturnValue,
             *Error => ObjectInnerType.Error,
@@ -107,6 +110,19 @@ pub const Boolean = struct {
 
     pub fn inspect(self: Boolean, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "{s}", .{ if (self.value) "true" else "false" }) catch "";
+    }
+};
+
+pub const String = struct {
+    value: []const u8,
+
+    pub fn objectType(self: String) ObjectType {
+        _ = self;
+        return STRING_OBJ;
+    }
+
+    pub fn inspect(self: String, allocator: std.mem.Allocator) []const u8 {
+        return std.fmt.allocPrint(allocator, "{s}", .{ self.value }) catch "";
     }
 };
 

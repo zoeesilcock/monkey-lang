@@ -81,6 +81,11 @@ pub fn eval(node: ast.Node, env: *object.Environment, allocator: std.mem.Allocat
             const boolean: *object.Boolean = @constCast(nativeBoolToBooleanObject(node.unwrap(ast.BooleanLiteral).value));
             return object.Object.init(boolean);
         },
+        .StringLiteral => {
+            var string: *object.String = try allocator.create(object.String);
+            string.value = node.unwrap(ast.StringLiteral).value;
+            return object.Object.init(string);
+        },
         .PrefixExpression => {
             const expression: *ast.PrefixExpression = node.unwrap(ast.PrefixExpression);
             const right = try evalExpression(expression.right, env, allocator);
@@ -214,6 +219,7 @@ fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, all
             .Identifier => result = try eval(ast.Node.init(expression.unwrap(ast.Identifier)), env, allocator),
             .FunctionLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.FunctionLiteral)), env, allocator),
             .CallExpression => result = try eval(ast.Node.init(expression.unwrap(ast.CallExpression)), env, allocator),
+            .StringLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.StringLiteral)), env, allocator),
         }
     }
 
@@ -733,3 +739,21 @@ test "closures" {
 
     try testFunctionCall(input, 4);
 }
+
+test "string literal" {
+    const input = "\"Hello World!\"";
+    if (try testEval(input)) |evaluated| {
+        try testStringLiteral(evaluated, "Hello World!");
+    } else {
+        unreachable;
+    }
+}
+
+fn testStringLiteral(obj: object.Object, expected_value: []const u8) !void {
+    try std.testing.expectEqual(obj.inner_type, .String);
+
+    const string: *object.String = obj.unwrap(object.String);
+
+    try std.testing.expectEqualSlices(u8, expected_value, string.value);
+}
+
