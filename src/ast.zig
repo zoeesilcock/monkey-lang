@@ -13,11 +13,13 @@ const NodeType = enum {
     IntegerLiteral,
     BooleanLiteral,
     FunctionLiteral,
+    ArrayLiteral,
     StringLiteral,
     PrefixExpression,
     InfixExpression,
     IfExpression,
     CallExpression,
+    IndexExpression,
 };
 
 pub const Node = struct {
@@ -62,11 +64,13 @@ pub const Node = struct {
             *IntegerLiteral => NodeType.IntegerLiteral,
             *BooleanLiteral => NodeType.BooleanLiteral,
             *FunctionLiteral => NodeType.FunctionLiteral,
+            *ArrayLiteral => NodeType.ArrayLiteral,
             *StringLiteral => NodeType.StringLiteral,
             *PrefixExpression => NodeType.PrefixExpression,
             *InfixExpression => NodeType.InfixExpression,
             *IfExpression => NodeType.IfExpression,
             *CallExpression => NodeType.CallExpression,
+            *IndexExpression => NodeType.IndexExpression,
             else => {
                 std.debug.print("Unsupported Node type: {?}\n", .{ Ptr });
                 unreachable;
@@ -336,12 +340,14 @@ pub const ExpressionType = enum {
     Identifier,
     IntegerLiteral,
     BooleanLiteral,
+    ArrayLiteral,
     FunctionLiteral,
     StringLiteral,
     PrefixExpression,
     InfixExpression,
     IfExpression,
     CallExpression,
+    IndexExpression,
 };
 
 pub const Expression = struct {
@@ -384,11 +390,13 @@ pub const Expression = struct {
             *IntegerLiteral => ExpressionType.IntegerLiteral,
             *BooleanLiteral => ExpressionType.BooleanLiteral,
             *FunctionLiteral => ExpressionType.FunctionLiteral,
+            *ArrayLiteral => ExpressionType.ArrayLiteral,
             *StringLiteral => ExpressionType.StringLiteral,
             *PrefixExpression => ExpressionType.PrefixExpression,
             *InfixExpression => ExpressionType.InfixExpression,
             *IfExpression => ExpressionType.IfExpression,
             *CallExpression => ExpressionType.CallExpression,
+            *IndexExpression => ExpressionType.IndexExpression,
             else => {
                 std.debug.print("Unsupported Expression type: {?}\n", .{ Ptr });
                 unreachable;
@@ -536,6 +544,72 @@ pub const StringLiteral = struct {
     pub fn string(self: *StringLiteral, allocator: std.mem.Allocator) []const u8 {
         _ = allocator;
         return self.token.literal;
+    }
+};
+
+pub const ArrayLiteral = struct {
+    token: token.Token,
+    elements: []Expression,
+
+    pub fn tokenLiteral(self: *ArrayLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: ArrayLiteral) void {
+        _ = self;
+    }
+
+    pub fn string(self: *ArrayLiteral, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "[",
+        }) catch "";
+
+        for (self.elements, 0..) |element, i| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                element.string(allocator),
+                if (i < self.elements.len - 1) ", " else "",
+            }) catch "";
+        }
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "]",
+        }) catch "";
+
+        return out;
+    }
+};
+
+pub const IndexExpression = struct {
+    token: token.Token,
+    left: Expression,
+    index: ?Expression,
+
+    pub fn tokenLiteral(self: *IndexExpression) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: IndexExpression) void {
+        _ = self;
+    }
+
+    pub fn string(self: *IndexExpression, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "(",
+            self.left.string(allocator),
+            "[",
+            self.index.?.string(allocator),
+            "])",
+        }) catch "";
+
+        return out;
     }
 };
 

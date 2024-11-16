@@ -180,6 +180,34 @@ pub fn eval(node: ast.Node, env: *object.Environment, allocator: std.mem.Allocat
 
             return null;
         },
+        .ArrayLiteral => {
+            const array_literal: *ast.ArrayLiteral = node.unwrap(ast.ArrayLiteral);
+
+            const elements = try evalExpressions(array_literal.elements, env, allocator);
+            if (elements.len == 1 and isError(elements[0])) {
+                return elements[0];
+            }
+
+            var array_object: *object.Array = try allocator.create(object.Array);
+            array_object.elements = elements;
+
+            return object.Object.init(array_object);
+        },
+        .IndexExpression => {
+            const expression: *ast.IndexExpression = node.unwrap(ast.IndexExpression);
+
+            const left = try evalExpression(expression.left, env, allocator);
+            if (isError(left)) {
+                return left;
+            }
+
+            const index = try evalExpression(expression.index, env, allocator);
+            if (isError(index)) {
+                return index;
+            }
+
+            return try evalIndexExpression(left, index, allocator);
+        },
         else => {
             std.debug.print("Unexpected Node type in eval: {?}\n", .{node.node_type});
             return null;
@@ -247,6 +275,7 @@ fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, all
         switch (expression.expression_type) {
             .IntegerLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.IntegerLiteral)), env, allocator),
             .BooleanLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.BooleanLiteral)), env, allocator),
+            .ArrayLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.ArrayLiteral)), env, allocator),
             .PrefixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.PrefixExpression)), env, allocator),
             .InfixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.InfixExpression)), env, allocator),
             .IfExpression => result = try eval(ast.Node.init(expression.unwrap(ast.IfExpression)), env, allocator),
@@ -254,6 +283,7 @@ fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, all
             .FunctionLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.FunctionLiteral)), env, allocator),
             .CallExpression => result = try eval(ast.Node.init(expression.unwrap(ast.CallExpression)), env, allocator),
             .StringLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.StringLiteral)), env, allocator),
+            .IndexExpression => result = try eval(ast.Node.init(expression.unwrap(ast.IndexExpression)), env, allocator),
         }
     }
 
@@ -493,6 +523,39 @@ fn unwrapReturnValue(opt_obj: ?object.Object) ?object.Object {
     }
 
     return result;
+}
+
+fn evalIndexExpression(
+    opt_left: ?object.Object,
+    opt_index: ?object.Object,
+    allocator: std.mem.Allocator,
+) !?object.Object {
+    var result: ?object.Object = null;
+
+    if (opt_left) |*left| {
+        if (opt_index) |*index| {
+            if (left.inner_type == .Array and index.inner_type == .Integer) {
+                result = try evalArrayIndexExpression(left, index);
+            } else {
+                return try newError("index operator not supported: {s}", .{ left.objectType() }, allocator);
+            }
+        }
+    }
+
+    return result;
+}
+
+fn evalArrayIndexExpression(array: *const object.Object, index: *const object.Object) !?object.Object {
+    const array_object: *object.Array = array.unwrap(object.Array);
+    const index_integer: *object.Integer = index.unwrap(object.Integer);
+    const i: i64 = index_integer.value;
+    const max: i64 = @intCast(array_object.elements.len - 1);
+
+    if (i < 0 or i > max) {
+        return object.Object.init(@constCast(NULL));
+    }
+
+    return array_object.elements[@intCast(i)];
 }
 
 fn isTruthy(obj: object.Object) bool {
@@ -858,5 +921,73 @@ fn testBuiltinFunction(input: []const u8, expected_value: parser.TestValue) !voi
         }
     } else {
         unreachable;
+    }
+}
+
+test "array literals" {
+    const input = "[1, 2 * 2, 3 + 3]";
+
+    if (try testEval(input)) |evaluated| {
+        const array_literal: *object.Array = evaluated.unwrap(object.Array);
+
+        try std.testing.expectEqual(3, array_literal.elements.len);
+
+        try testIntegerObject(array_literal.elements[0], 1);
+        try testIntegerObject(array_literal.elements[1], 4);
+        try testIntegerObject(array_literal.elements[2], 6);
+    }
+}
+
+test "array index expressions" {
+    try testArrayIndexExpression(
+        "[1, 2, 3][0]",
+        .{ .int_value = 1 },
+    );
+    try testArrayIndexExpression(
+        "[1, 2, 3][1]",
+        .{ .int_value = 2 },
+    );
+    try testArrayIndexExpression(
+        "[1, 2, 3][2]",
+        .{ .int_value = 3 },
+    );
+    try testArrayIndexExpression(
+        "let i = 0; [1][i];",
+        .{ .int_value = 1 },
+    );
+    try testArrayIndexExpression(
+        "[1, 2, 3][1 + 1];",
+        .{ .int_value = 3 },
+    );
+    try testArrayIndexExpression(
+        "let myArray = [1, 2, 3]; myArray[2];",
+        .{ .int_value = 3 },
+    );
+    try testArrayIndexExpression(
+        "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+        .{ .int_value = 6 },
+    );
+    try testArrayIndexExpression(
+        "let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]",
+        .{ .int_value = 2 },
+    );
+    try testArrayIndexExpression(
+        "[1, 2, 3][3]",
+        null,
+    );
+    try testArrayIndexExpression(
+        "[1, 2, 3][-1]",
+        null,
+    );
+}
+
+fn testArrayIndexExpression(input: []const u8, expected_value: ?parser.TestValue) !void {
+    if (try testEval(input)) |evaluated| {
+        switch (evaluated.inner_type) {
+            .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
+            else => unreachable,
+        }
+    } else {
+        try std.testing.expectEqual(null, expected_value);
     }
 }

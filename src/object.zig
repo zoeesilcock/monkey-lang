@@ -12,11 +12,13 @@ pub const RETURN_VALUE_OBJ = "RETURN_VALUE";
 pub const ERROR_OBJ = "ERROR";
 pub const FUNCTION_OBJ = "FUNCTION";
 pub const BUILTIN_OBJ = "BUILTIN";
+pub const ARRAY_OBJ = "ARRAY";
 
 pub const ObjectInnerType = enum {
     Integer,
     Boolean,
     String,
+    Array,
     Null,
     ReturnValue,
     Error,
@@ -58,6 +60,7 @@ pub const Object = struct {
             *Integer => ObjectInnerType.Integer,
             *Boolean => ObjectInnerType.Boolean,
             *String => ObjectInnerType.String,
+            *Array => ObjectInnerType.Array,
             *Null => ObjectInnerType.Null,
             *ReturnValue => ObjectInnerType.ReturnValue,
             *Error => ObjectInnerType.Error,
@@ -220,6 +223,39 @@ pub const Builtin = struct {
         _ = self;
         _ = allocator;
         return "builtin function";
+    }
+};
+
+pub const Array = struct {
+    elements: []Object,
+
+    pub fn objectType(self: Array) ObjectType {
+        _ = self;
+        return ARRAY_OBJ;
+    }
+
+    pub fn inspect(self: Array, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "[",
+        }) catch "";
+
+        for (self.elements, 0..) |element, i| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                element.inspect(allocator),
+                if (i < self.elements.len - 1) ", " else "",
+            }) catch "";
+        }
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "]",
+        }) catch "";
+
+        return out;
     }
 };
 

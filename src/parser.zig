@@ -15,6 +15,7 @@ const OperatorPrecedence = enum(u32) {
     PRODUCT,
     PREFIX,
     CALL,
+    INDEX,
 };
 
 pub const Parser = struct {
@@ -52,6 +53,7 @@ pub const Parser = struct {
         try p.precedences.put(token.SLASH, .PRODUCT);
         try p.precedences.put(token.ASTERISK, .PRODUCT);
         try p.precedences.put(token.LPAREN, .CALL);
+        try p.precedences.put(token.LBRACKET, .INDEX);
 
         try p.registerPrefix(token.IDENT, parseIdentifier);
         try p.registerPrefix(token.INT, parseIntegerLiteral);
@@ -61,8 +63,9 @@ pub const Parser = struct {
         try p.registerPrefix(token.TRUE, parseBooleanLiteral);
         try p.registerPrefix(token.FALSE, parseBooleanLiteral);
         try p.registerPrefix(token.LPAREN, parseGroupedExpression);
-        try p.registerPrefix(token.IF, parseIfExpression);
         try p.registerPrefix(token.FUNCTION, parseFunctionLiteral);
+        try p.registerPrefix(token.IF, parseIfExpression);
+        try p.registerPrefix(token.LBRACKET, parseArrayLiteral);
 
         try p.registerInfix(token.PLUS, parseInfixExpression);
         try p.registerInfix(token.MINUS, parseInfixExpression);
@@ -72,7 +75,9 @@ pub const Parser = struct {
         try p.registerInfix(token.NOT_EQ, parseInfixExpression);
         try p.registerInfix(token.LT, parseInfixExpression);
         try p.registerInfix(token.GT, parseInfixExpression);
+
         try p.registerInfix(token.LPAREN, parseCallExpression);
+        try p.registerInfix(token.LBRACKET, parseIndexExpression);
 
         try p.nextToken();
         try p.nextToken();
@@ -286,13 +291,13 @@ pub const Parser = struct {
         return try identifiers.toOwnedSlice();
     }
 
-    fn parseCallArguments(self: *Parser) !?[]ast.Expression {
+    fn parseExpressionList(self: *Parser, end: token.TokenType) !?[]ast.Expression {
         tracer.trace(@src().fn_name);
         defer tracer.untrace(@src().fn_name);
 
         var args = std.ArrayList(ast.Expression).init(self.allocator);
 
-        if (self.peekTokenIs(token.RPAREN)) {
+        if (self.peekTokenIs(end)) {
             try self.nextToken();
             return try args.toOwnedSlice();
         }
@@ -311,7 +316,7 @@ pub const Parser = struct {
             }
         }
 
-        if (!try self.expectPeek(token.RPAREN)) {
+        if (!try self.expectPeek(end)) {
             return null;
         }
 
@@ -486,6 +491,17 @@ fn parseIfExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     return ast.Expression.init(expression);
 }
 
+fn parseArrayLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
+    var array_literal: *ast.ArrayLiteral = try self.allocator.create(ast.ArrayLiteral);
+    array_literal.token = self.cur_token;
+    array_literal.elements = try self.parseExpressionList(token.RBRACKET) orelse &.{};
+
+    return ast.Expression.init(array_literal);
+}
+
 fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     tracer.trace(@src().fn_name);
     defer tracer.untrace(@src().fn_name);
@@ -548,7 +564,26 @@ fn parseCallExpression(self: *Parser, function: ast.Expression) std.mem.Allocato
     var expression: *ast.CallExpression = try self.allocator.create(ast.CallExpression);
     expression.token = self.cur_token;
     expression.function = function;
-    expression.arguments = try self.parseCallArguments() orelse &.{};
+    expression.arguments = try self.parseExpressionList(token.RPAREN) orelse &.{};
+
+    return ast.Expression.init(expression);
+}
+
+fn parseIndexExpression(self: *Parser, left: ast.Expression) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
+    var expression: *ast.IndexExpression = try self.allocator.create(ast.IndexExpression);
+    expression.token = self.cur_token;
+    expression.left = left;
+
+    try self.nextToken();
+
+    expression.index = try self.parseExpression(.LOWEST);
+
+    if (!try self.expectPeek(token.RBRACKET)) {
+        return null;
+    }
 
     return ast.Expression.init(expression);
 }
@@ -910,6 +945,14 @@ test "operator precedence parsing" {
         "add(a + b + c * d / f + g)",
         "add((((a + b) + ((c * d) / f)) + g))",
     );
+    try testOperatorPrecedenceParsing(
+        "a * [1, 2, 3, 4][b * c] * d",
+        "((a * ([1, 2, 3, 4][(b * c)])) * d)",
+    );
+    try testOperatorPrecedenceParsing(
+        "add(a * b[2], b[1], 2 * [1, 2][1])",
+        "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))",
+    );
 }
 
 fn testOperatorPrecedenceParsing(input: []const u8, expected: []const u8) !void {
@@ -1040,4 +1083,38 @@ test "string literal expression" {
     const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
     const string_literal: *ast.StringLiteral = stmt.expression.?.unwrap(ast.StringLiteral);
     try std.testing.expectEqualSlices(u8, "hello world", string_literal.value);
+}
+
+test "parsing array liteals" {
+    const input = "[1, 2 * 2, 3 + 3]";
+
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+    try std.testing.expectEqual(1, setup.program.statements.len);
+
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+
+    const array_literal: *ast.ArrayLiteral = stmt.expression.?.unwrap(ast.ArrayLiteral);
+    try std.testing.expectEqual(3, array_literal.elements.len);
+
+    try testIntegerLiteral(1, array_literal.elements[0]);
+    try testInfixEpression(.{ .int_value = 2 }, "*", .{ .int_value = 2 }, array_literal.elements[1]);
+    try testInfixEpression(.{ .int_value = 3 }, "+", .{ .int_value = 3 }, array_literal.elements[2]);
+}
+
+test "parsing index expressions" {
+    const input = "myArray[1 + 1]";
+
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+
+    const index_expression: *ast.IndexExpression = stmt.expression.?.unwrap(ast.IndexExpression);
+    try testIdentifier("myArray", index_expression.left);
+    try testInfixEpression(.{ .int_value = 1 }, "+", .{ .int_value = 1 }, index_expression.index.?);
 }

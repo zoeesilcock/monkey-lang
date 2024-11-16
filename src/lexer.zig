@@ -113,6 +113,8 @@ pub const Lexer = struct {
             ')' => { result = try self.newToken(token.RPAREN, self.char); },
             '{' => { result = try self.newToken(token.LBRACE, self.char); },
             '}' => { result = try self.newToken(token.RBRACE, self.char); },
+            '[' => { result = try self.newToken(token.LBRACKET, self.char); },
+            ']' => { result = try self.newToken(token.RBRACKET, self.char); },
             '"' => {
                 result.token_type = token.STRING;
                 result.literal = self.readString();
@@ -181,6 +183,7 @@ test "next token" {
         \\
         \\"foobar"
         \\"foo bar"
+        \\[1, 2];
     ;
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -278,6 +281,13 @@ test "next token" {
 
     try testTokenEquality(Token{ .token_type = token.STRING, .literal = "foobar" }, try lexer.nextToken());
     try testTokenEquality(Token{ .token_type = token.STRING, .literal = "foo bar" }, try lexer.nextToken());
+
+    try testTokenEquality(Token{ .token_type = token.LBRACKET, .literal = "[" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "1" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.COMMA, .literal = "," }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.INT, .literal = "2" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.RBRACKET, .literal = "]" }, try lexer.nextToken());
+    try testTokenEquality(Token{ .token_type = token.SEMICOLON, .literal = ";" }, try lexer.nextToken());
 
     try testTokenEquality(Token{ .token_type = token.EOF, .literal = "" }, try lexer.nextToken());
 }

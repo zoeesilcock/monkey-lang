@@ -53,6 +53,8 @@ pub const LPAREN = "(";
 pub const RPAREN = ")";
 pub const LBRACE = "{";
 pub const RBRACE = "}";
+pub const LBRACKET = "[";
+pub const RBRACKET = "]";
 
 // Keywords
 pub const FUNCTION = "FUNCTION";
