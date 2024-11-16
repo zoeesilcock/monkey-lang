@@ -2,6 +2,7 @@ const std = @import("std");
 const ast = @import("ast.zig");
 
 pub const ObjectType: type = []const u8;
+pub const BuiltinFunction: type = *const fn (args: []Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?Object;
 
 pub const INTEGER_OBJ: ObjectType = "INTEGER";
 pub const BOOLEAN_OBJ: ObjectType = "BOOLEAN";
@@ -10,6 +11,7 @@ pub const NULL_OBJ: ObjectType = "NULL";
 pub const RETURN_VALUE_OBJ = "RETURN_VALUE";
 pub const ERROR_OBJ = "ERROR";
 pub const FUNCTION_OBJ = "FUNCTION";
+pub const BUILTIN_OBJ = "BUILTIN";
 
 pub const ObjectInnerType = enum {
     Integer,
@@ -19,6 +21,7 @@ pub const ObjectInnerType = enum {
     ReturnValue,
     Error,
     Function,
+    Builtin,
 };
 
 pub const Object = struct {
@@ -59,6 +62,7 @@ pub const Object = struct {
             *ReturnValue => ObjectInnerType.ReturnValue,
             *Error => ObjectInnerType.Error,
             *Function => ObjectInnerType.Function,
+            *Builtin => ObjectInnerType.Builtin,
             else => {
                 std.debug.print("Unsupported Object type: {?}\n", .{ Ptr });
                 unreachable;
@@ -201,6 +205,21 @@ pub const Function = struct {
         }) catch "";
 
         return out;
+    }
+};
+
+pub const Builtin = struct {
+    function: BuiltinFunction,
+
+    pub fn objectType(self: Builtin) ObjectType {
+        _ = self;
+        return BUILTIN_OBJ;
+    }
+
+    pub fn inspect(self: Builtin, allocator: std.mem.Allocator) []const u8 {
+        _ = self;
+        _ = allocator;
+        return "builtin function";
     }
 };
 

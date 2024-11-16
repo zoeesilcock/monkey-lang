@@ -8,6 +8,40 @@ const NULL = &object.Null{};
 const TRUE = &object.Boolean{ .value = true };
 const FALSE = &object.Boolean{ .value = false };
 
+fn getBuiltin(name: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+    var result: ?object.Object = null;
+    var builtin: ?*object.Builtin = null;
+
+    if (std.mem.eql(u8, name, "len")) {
+        builtin = try allocator.create(object.Builtin);
+        builtin.?.function = builtinLen;
+    }
+
+    if (builtin) |b| {
+        result = object.Object.init(b);
+    }
+
+    return result;
+}
+
+fn builtinLen (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+    if (args.len != 1) {
+        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+    }
+
+    return switch (args[0].inner_type) {
+        .String => {
+            const string_object = args[0].unwrap(object.String);
+            var integer: *object.Integer = try allocator.create(object.Integer);
+            integer.value = @intCast(string_object.value.len);
+            return object.Object.init(integer);
+        },
+        else => {
+            return try newError("argument to `len` not supported, got {s}", .{ args[0].objectType() }, allocator);
+        },
+    };
+}
+
 fn newError(comptime format: []const u8, args: anytype, allocator: std.mem.Allocator) !object.Object {
     var result: *object.Error = try allocator.create(object.Error);
     result.message = try std.fmt.allocPrint(allocator, format, args);
@@ -410,27 +444,32 @@ fn evalIfExpression(if_expression: *ast.IfExpression, env: *object.Environment, 
 }
 
 fn evalIdentifier(identifier: *ast.Identifier, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
-    var result: ?object.Object = null;
-
     if (env.get(identifier.value)) |value| {
-        result = value;
-    } else {
-        return try newError("identifier not found: {s}", .{ identifier.value }, allocator);
+        return value;
     }
 
-    return result;
+    if (try getBuiltin(identifier.value, allocator)) |builtin| {
+        return builtin;
+    }
+
+    return try newError("identifier not found: {s}", .{ identifier.value }, allocator);
 }
 
 fn applyFunction(function: object.Object, args: []object.Object, allocator: std.mem.Allocator) !?object.Object {
-    if (function.inner_type != .Function) {
-        return try newError("not a function: {s}", .{ function.objectType() }, allocator);
+    switch (function.inner_type) {
+        object.ObjectInnerType.Function => {
+            const fn_object: *object.Function = function.unwrap(object.Function);
+            const extended_env = try extendFunctionEnv(fn_object, args, allocator);
+            const evaluated = try eval(ast.Node.init(fn_object.body.?), extended_env, allocator);
+
+            return unwrapReturnValue(evaluated);
+        },
+        object.ObjectInnerType.Builtin => {
+            const builtin_object: *object.Builtin = function.unwrap(object.Builtin);
+            return try builtin_object.function(args, allocator);
+        },
+        else => return try newError("not a function: {s}", .{ function.objectType() }, allocator),
     }
-
-    const fn_object: *object.Function = function.unwrap(object.Function);
-    const extended_env = try extendFunctionEnv(fn_object, args, allocator);
-    const evaluated = try eval(ast.Node.init(fn_object.body.?), extended_env, allocator);
-
-    return unwrapReturnValue(evaluated);
 }
 
 fn extendFunctionEnv(fn_object: *object.Function, args: []object.Object, allocator: std.mem.Allocator) !*object.Environment {
@@ -789,6 +828,34 @@ test "string concatenation" {
 
     if (try testEval(input)) |evaluated| {
         try testStringLiteral(evaluated, "Hello World!");
+    } else {
+        unreachable;
+    }
+}
+
+test "builtin functions" {
+    try testBuiltinFunction("len(\"\")", .{ .int_value = 0 });
+    try testBuiltinFunction("len(\"four\")", .{ .int_value = 4 });
+    try testBuiltinFunction("len(\"hello world\")", .{ .int_value = 11 });
+    try testBuiltinFunction("len(1)", .{ .string_value = "argument to `len` not supported, got INTEGER" });
+    try testBuiltinFunction("len(\"one\", \"two\")", .{ .string_value = "wrong number of arguments. got=2, want=1" });
+}
+
+fn testBuiltinFunction(input: []const u8, expected_value: parser.TestValue) !void {
+    if (try testEval(input)) |evaluated| {
+        switch (expected_value) {
+            .int_value => |expected_integer| try testIntegerObject(evaluated, expected_integer),
+            .string_value => |expected_string| {
+                try std.testing.expectEqual(evaluated.inner_type, .Error);
+
+                const err_object: *object.Error = evaluated.unwrap(object.Error);
+                try std.testing.expectEqualSlices(u8, expected_string, err_object.message);
+            },
+            else => {
+                std.debug.print("no value received from statement\n", .{});
+                unreachable;
+            }
+        }
     } else {
         unreachable;
     }
