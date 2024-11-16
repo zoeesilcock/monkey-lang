@@ -305,6 +305,8 @@ fn evalInfixExpression(
 
             if (left.inner_type == .Integer and right.inner_type == .Integer) {
                 result = try evalIntegerInfixExpression(operator, left, right, allocator);
+            } else if (left.inner_type == .String and right.inner_type == .String) {
+                result = try evalStringInfixExpression(operator, left, right, allocator);
             } else if (std.mem.eql(u8, operator, "==")) {
                 const boolean: *object.Boolean = @constCast(nativeBoolToBooleanObject(left.ptr == right.ptr));
                 result = object.Object.init(boolean);
@@ -364,6 +366,24 @@ fn evalIntegerInfixExpression(
     }
 
     return result;
+}
+
+fn evalStringInfixExpression(
+    operator: []const u8,
+    left: *const object.Object,
+    right: *const object.Object,
+    allocator: std.mem.Allocator,
+) !?object.Object {
+    if (!std.mem.eql(u8, operator, "+")) {
+        return try newError("unknown operator: {s} {s} {s}", .{ left.objectType(), operator, right.objectType() }, allocator);
+    }
+
+    const left_value: []const u8 = left.unwrap(object.String).value;
+    const right_value: []const u8 = right.unwrap(object.String).value;
+    
+    const string_object = try allocator.create(object.String);
+    string_object.value = try std.mem.concat(allocator, u8, &.{ left_value, right_value });
+    return object.Object.init(string_object);
 }
 
 fn evalIfExpression(if_expression: *ast.IfExpression, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
@@ -641,6 +661,11 @@ test "error handling" {
         "foobar",
         "identifier not found: foobar",
     );
+    try testErrorHandling(
+        \\"Hello" - "World"
+        ,
+        "unknown operator: STRING - STRING",
+    );
 }
 
 fn testErrorHandling(input: []const u8, expected_error: []const u8) !void {
@@ -757,3 +782,14 @@ fn testStringLiteral(obj: object.Object, expected_value: []const u8) !void {
     try std.testing.expectEqualSlices(u8, expected_value, string.value);
 }
 
+test "string concatenation" {
+    const input =
+        \\"Hello" + " " + "World!"
+    ;
+
+    if (try testEval(input)) |evaluated| {
+        try testStringLiteral(evaluated, "Hello World!");
+    } else {
+        unreachable;
+    }
+}
