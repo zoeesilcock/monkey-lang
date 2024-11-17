@@ -15,6 +15,18 @@ fn getBuiltin(name: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.
     if (std.mem.eql(u8, name, "len")) {
         builtin = try allocator.create(object.Builtin);
         builtin.?.function = builtinLen;
+    } else if (std.mem.eql(u8, name, "first")) {
+        builtin = try allocator.create(object.Builtin);
+        builtin.?.function = builtinFirst;
+    } else if (std.mem.eql(u8, name, "last")) {
+        builtin = try allocator.create(object.Builtin);
+        builtin.?.function = builtinLast;
+    } else if (std.mem.eql(u8, name, "rest")) {
+        builtin = try allocator.create(object.Builtin);
+        builtin.?.function = builtinRest;
+    } else if (std.mem.eql(u8, name, "push")) {
+        builtin = try allocator.create(object.Builtin);
+        builtin.?.function = builtinPush;
     }
 
     if (builtin) |b| {
@@ -30,6 +42,12 @@ fn builtinLen (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
     }
 
     return switch (args[0].inner_type) {
+        .Array => {
+            const array_object = args[0].unwrap(object.Array);
+            var integer: *object.Integer = try allocator.create(object.Integer);
+            integer.value = @intCast(array_object.elements.len);
+            return object.Object.init(integer);
+        },
         .String => {
             const string_object = args[0].unwrap(object.String);
             var integer: *object.Integer = try allocator.create(object.Integer);
@@ -40,6 +58,89 @@ fn builtinLen (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
             return try newError("argument to `len` not supported, got {s}", .{ args[0].objectType() }, allocator);
         },
     };
+}
+
+fn builtinFirst (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+    if (args.len != 1) {
+        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+    }
+
+    if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
+        return try newError("argument to `first` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+    }
+
+    const array_object = args[0].unwrap(object.Array);
+    if (array_object.elements.len > 0) {
+        return array_object.elements[0];
+    }
+
+    return object.Object.init(@constCast(NULL));
+}
+
+fn builtinLast (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+    if (args.len != 1) {
+        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+    }
+
+    if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
+        return try newError("argument to `last` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+    }
+
+    const array_object = args[0].unwrap(object.Array);
+    if (array_object.elements.len > 0) {
+        return array_object.elements[array_object.elements.len - 1];
+    }
+
+    return object.Object.init(@constCast(NULL));
+}
+
+fn builtinRest (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+    if (args.len != 1) {
+        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+    }
+
+    if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
+        return try newError("argument to `rest` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+    }
+
+    const array_object = args[0].unwrap(object.Array);
+    const length = array_object.elements.len;
+    if (length > 0) {
+        var result: *object.Array = try allocator.create(object.Array);
+        var new_elements = std.ArrayList(object.Object).init(allocator);
+
+        for (array_object.elements[1..]) |element| {
+            try new_elements.append(element);
+        }
+
+        result.elements = try new_elements.toOwnedSlice();
+        return object.Object.init(result);
+    }
+
+    return object.Object.init(@constCast(NULL));
+}
+
+fn builtinPush (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+    if (args.len != 2) {
+        return try newError("wrong number of arguments. got={d}, want=2", .{ args.len }, allocator);
+    }
+
+    if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
+        return try newError("argument to `push` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+    }
+
+    const array_object = args[0].unwrap(object.Array);
+    var new_elements = std.ArrayList(object.Object).init(allocator);
+
+    for (array_object.elements) |element| {
+        try new_elements.append(element);
+    }
+
+    try new_elements.append(args[1]);
+
+    var result: *object.Array = try allocator.create(object.Array);
+    result.elements = try new_elements.toOwnedSlice();
+    return object.Object.init(result);
 }
 
 fn newError(comptime format: []const u8, args: anytype, allocator: std.mem.Allocator) !object.Object {
@@ -902,20 +1003,41 @@ test "builtin functions" {
     try testBuiltinFunction("len(\"hello world\")", .{ .int_value = 11 });
     try testBuiltinFunction("len(1)", .{ .string_value = "argument to `len` not supported, got INTEGER" });
     try testBuiltinFunction("len(\"one\", \"two\")", .{ .string_value = "wrong number of arguments. got=2, want=1" });
+    try testBuiltinFunction("len([1, 2, 3])", .{ .int_value = 3 });
+    try testBuiltinFunction("len([])", .{ .int_value = 0 });
+    try testBuiltinFunction("first([1, 2, 3])", .{ .int_value = 1 });
+    try testBuiltinFunction("first([])", null);
+    try testBuiltinFunction("first(1)", .{ .string_value = "argument to `first` must be ARRAY, got INTEGER" });
+    try testBuiltinFunction("last([1, 2, 3])", .{ .int_value = 3 });
+    try testBuiltinFunction("last([])", null);
+    try testBuiltinFunction("last(1)", .{ .string_value = "argument to `last` must be ARRAY, got INTEGER" });
+    try testBuiltinFunction("rest([1, 2, 3])", .{ .int_array_value = &.{2, 3} });
+    try testBuiltinFunction("rest([])", null);
+    try testBuiltinFunction("push([], 1)", .{ .int_array_value = &.{1} });
+    try testBuiltinFunction("push(1, 1)", .{ .string_value = "argument to `push` must be ARRAY, got INTEGER" });
 }
 
-fn testBuiltinFunction(input: []const u8, expected_value: parser.TestValue) !void {
+fn testBuiltinFunction(input: []const u8, expected_value: ?parser.TestValue) !void {
     if (try testEval(input)) |evaluated| {
-        switch (expected_value) {
-            .int_value => |expected_integer| try testIntegerObject(evaluated, expected_integer),
-            .string_value => |expected_string| {
+        switch (evaluated.inner_type) {
+            .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
+            .Error => {
                 try std.testing.expectEqual(evaluated.inner_type, .Error);
 
                 const err_object: *object.Error = evaluated.unwrap(object.Error);
-                try std.testing.expectEqualSlices(u8, expected_string, err_object.message);
+                try std.testing.expectEqualSlices(u8, expected_value.?.string_value, err_object.message);
+            },
+            .Null => try std.testing.expectEqual(null, expected_value),
+            .Array => {
+                const array_object: *object.Array = evaluated.unwrap(object.Array);
+
+                try std.testing.expectEqual(expected_value.?.int_array_value.len, array_object.elements.len);
+                for (expected_value.?.int_array_value, 0..) |expected, i| {
+                    try testIntegerObject(array_object.elements[i], expected);
+                }
             },
             else => {
-                std.debug.print("no value received from statement\n", .{});
+                std.debug.print("no value received from statement, got {?}\n", .{ evaluated.inner_type });
                 unreachable;
             }
         }
@@ -985,7 +1107,8 @@ fn testArrayIndexExpression(input: []const u8, expected_value: ?parser.TestValue
     if (try testEval(input)) |evaluated| {
         switch (evaluated.inner_type) {
             .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
-            else => unreachable,
+            .Null => try std.testing.expectEqual(null, expected_value),
+            else => std.debug.print("unexpected array index type: {?}\n", .{ evaluated.inner_type }),
         }
     } else {
         try std.testing.expectEqual(null, expected_value);

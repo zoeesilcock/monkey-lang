@@ -612,12 +612,14 @@ const TestValueTypes = enum {
     int_value,
     bool_value,
     string_value,
+    int_array_value,
 };
 
 pub const TestValue = union(TestValueTypes) {
     int_value: i64,
     bool_value: bool,
     string_value: []const u8,
+    int_array_value: []const i64,
 };
 
 fn testLiteralExpression(expected_value: TestValue, expression: ast.Expression) !void {
@@ -625,6 +627,7 @@ fn testLiteralExpression(expected_value: TestValue, expression: ast.Expression) 
         .int_value => |value| try testIntegerLiteral(value, expression),
         .bool_value => |value| try testBooleanLiteral(value, expression),
         .string_value => |value| try testIdentifier(value, expression),
+        else => {},
     }
 }
 
