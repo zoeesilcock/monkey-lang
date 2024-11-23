@@ -27,6 +27,9 @@ fn getBuiltin(name: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.
     } else if (std.mem.eql(u8, name, "push")) {
         builtin = try allocator.create(object.Builtin);
         builtin.?.function = builtinPush;
+    } else if (std.mem.eql(u8, name, "puts")) {
+        builtin = try allocator.create(object.Builtin);
+        builtin.?.function = builtinPuts;
     }
 
     if (builtin) |b| {
@@ -141,6 +144,14 @@ fn builtinPush(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
     var result: *object.Array = try allocator.create(object.Array);
     result.elements = try new_elements.toOwnedSlice();
     return object.Object.init(result);
+}
+
+fn builtinPuts(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+    for (args) |arg| {
+        std.debug.print("{s}\n", .{ arg.inspect(allocator) });
+    }
+
+    return object.Object.init(@constCast(NULL));
 }
 
 fn newError(comptime format: []const u8, args: anytype, allocator: std.mem.Allocator) !object.Object {
