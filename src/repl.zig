@@ -30,28 +30,34 @@ pub fn start(out: std.fs.File, in: std.fs.File) !void {
     var env = try object.Environment.init(permanent_arena.allocator());
     defer env.deinit();
 
+    // try processInput(out, @embedFile("std/array.mnk"), env, &permanent_arena);
+
     while (true) {
         _ = try stdout.write(PROMPT);
 
         const input = try stdin.readUntilDelimiter(&input_buffer, '\n');
+        processInput(out, input, env, &permanent_arena) catch continue;
+    }
+}
 
-        var temporary_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temporary_arena.deinit();
+fn processInput(out: std.fs.File, input: []const u8, env: *object.Environment, permanent_arena: *std.heap.ArenaAllocator) !void {
+    const stdout = out.writer();
 
-        var l = lexer.Lexer.init(input, temporary_arena.allocator());
-        defer l.deinit();
+    var temporary_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer temporary_arena.deinit();
 
-        var p = try parser.Parser.new(&l, permanent_arena.allocator(), temporary_arena.allocator());
-        var program = try p.parseProgram();
+    var l = lexer.Lexer.init(input, temporary_arena.allocator());
+    defer l.deinit();
 
-        if (p.errors.len > 0) {
-            try printParserErrors(out, p.errors);
-            continue;
-        }
+    var p = try parser.Parser.new(&l, permanent_arena.allocator(), temporary_arena.allocator());
+    var program = try p.parseProgram();
 
-        if (try evaluator.eval(ast.Node.init(&program), env, permanent_arena.allocator())) |evaluated| {
-            try stdout.print("{s}\n", .{ evaluated.inspect(temporary_arena.allocator()) });
-        }
+    if (p.errors.len > 0) {
+        try printParserErrors(out, p.errors);
+    }
+
+    if (try evaluator.eval(ast.Node.init(&program), env, permanent_arena.allocator())) |evaluated| {
+        try stdout.print("{s}\n", .{ evaluated.inspect(temporary_arena.allocator()) });
     }
 }
 
