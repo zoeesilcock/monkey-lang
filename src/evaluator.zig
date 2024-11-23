@@ -36,9 +36,9 @@ fn getBuiltin(name: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.
     return result;
 }
 
-fn builtinLen (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+fn builtinLen(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     if (args.len != 1) {
-        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+        return try newError("wrong number of arguments. got={d}, want=1", .{args.len}, allocator);
     }
 
     return switch (args[0].inner_type) {
@@ -55,18 +55,18 @@ fn builtinLen (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
             return object.Object.init(integer);
         },
         else => {
-            return try newError("argument to `len` not supported, got {s}", .{ args[0].objectType() }, allocator);
+            return try newError("argument to `len` not supported, got {s}", .{args[0].objectType()}, allocator);
         },
     };
 }
 
-fn builtinFirst (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+fn builtinFirst(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     if (args.len != 1) {
-        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+        return try newError("wrong number of arguments. got={d}, want=1", .{args.len}, allocator);
     }
 
     if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
-        return try newError("argument to `first` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+        return try newError("argument to `first` must be ARRAY, got {s}", .{args[0].objectType()}, allocator);
     }
 
     const array_object = args[0].unwrap(object.Array);
@@ -77,13 +77,13 @@ fn builtinFirst (args: []object.Object, allocator: std.mem.Allocator) std.mem.Al
     return object.Object.init(@constCast(NULL));
 }
 
-fn builtinLast (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+fn builtinLast(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     if (args.len != 1) {
-        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+        return try newError("wrong number of arguments. got={d}, want=1", .{args.len}, allocator);
     }
 
     if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
-        return try newError("argument to `last` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+        return try newError("argument to `last` must be ARRAY, got {s}", .{args[0].objectType()}, allocator);
     }
 
     const array_object = args[0].unwrap(object.Array);
@@ -94,13 +94,13 @@ fn builtinLast (args: []object.Object, allocator: std.mem.Allocator) std.mem.All
     return object.Object.init(@constCast(NULL));
 }
 
-fn builtinRest (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+fn builtinRest(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     if (args.len != 1) {
-        return try newError("wrong number of arguments. got={d}, want=1", .{ args.len }, allocator);
+        return try newError("wrong number of arguments. got={d}, want=1", .{args.len}, allocator);
     }
 
     if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
-        return try newError("argument to `rest` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+        return try newError("argument to `rest` must be ARRAY, got {s}", .{args[0].objectType()}, allocator);
     }
 
     const array_object = args[0].unwrap(object.Array);
@@ -120,13 +120,13 @@ fn builtinRest (args: []object.Object, allocator: std.mem.Allocator) std.mem.All
     return object.Object.init(@constCast(NULL));
 }
 
-fn builtinPush (args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
+fn builtinPush(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     if (args.len != 2) {
-        return try newError("wrong number of arguments. got={d}, want=2", .{ args.len }, allocator);
+        return try newError("wrong number of arguments. got={d}, want=2", .{args.len}, allocator);
     }
 
     if (!std.mem.eql(u8, args[0].objectType(), object.ARRAY_OBJ)) {
-        return try newError("argument to `push` must be ARRAY, got {s}", .{ args[0].objectType() }, allocator);
+        return try newError("argument to `push` must be ARRAY, got {s}", .{args[0].objectType()}, allocator);
     }
 
     const array_object = args[0].unwrap(object.Array);
@@ -309,6 +309,10 @@ pub fn eval(node: ast.Node, env: *object.Environment, allocator: std.mem.Allocat
 
             return try evalIndexExpression(left, index, allocator);
         },
+        .HashLiteral => {
+            const hash_literal: *ast.HashLiteral = node.unwrap(ast.HashLiteral);
+            return evalHashLiteral(hash_literal, env, allocator);
+        },
         else => {
             std.debug.print("Unexpected Node type in eval: {?}\n", .{node.node_type});
             return null;
@@ -343,8 +347,8 @@ fn evalBlockStatement(block: *ast.BlockStatement, env: *object.Environment, allo
 
         if (result) |res| {
             if (std.mem.eql(u8, res.objectType(), object.RETURN_VALUE_OBJ) or
-                std.mem.eql(u8, res.objectType(), object.ERROR_OBJ)
-            ) {
+                std.mem.eql(u8, res.objectType(), object.ERROR_OBJ))
+            {
                 return result;
             }
         }
@@ -377,6 +381,7 @@ fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, all
             .IntegerLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.IntegerLiteral)), env, allocator),
             .BooleanLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.BooleanLiteral)), env, allocator),
             .ArrayLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.ArrayLiteral)), env, allocator),
+            .HashLiteral => result = try eval(ast.Node.init(expression.unwrap(ast.HashLiteral)), env, allocator),
             .PrefixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.PrefixExpression)), env, allocator),
             .InfixExpression => result = try eval(ast.Node.init(expression.unwrap(ast.InfixExpression)), env, allocator),
             .IfExpression => result = try eval(ast.Node.init(expression.unwrap(ast.IfExpression)), env, allocator),
@@ -448,7 +453,7 @@ fn evalMinusPrefixOperatorExpression(right: object.Object, allocator: std.mem.Al
         result_integer.value = -integer.value;
         result = object.Object.init(result_integer);
     } else {
-        return try newError("unknown operator: -{s}", .{ right.objectType() }, allocator);
+        return try newError("unknown operator: -{s}", .{right.objectType()}, allocator);
     }
 
     return result;
@@ -545,7 +550,7 @@ fn evalStringInfixExpression(
 
     const left_value: []const u8 = left.unwrap(object.String).value;
     const right_value: []const u8 = right.unwrap(object.String).value;
-    
+
     const string_object = try allocator.create(object.String);
     string_object.value = try std.mem.concat(allocator, u8, &.{ left_value, right_value });
     return object.Object.init(string_object);
@@ -583,7 +588,7 @@ fn evalIdentifier(identifier: *ast.Identifier, env: *object.Environment, allocat
         return builtin;
     }
 
-    return try newError("identifier not found: {s}", .{ identifier.value }, allocator);
+    return try newError("identifier not found: {s}", .{identifier.value}, allocator);
 }
 
 fn applyFunction(function: object.Object, args: []object.Object, allocator: std.mem.Allocator) !?object.Object {
@@ -599,7 +604,7 @@ fn applyFunction(function: object.Object, args: []object.Object, allocator: std.
             const builtin_object: *object.Builtin = function.unwrap(object.Builtin);
             return try builtin_object.function(args, allocator);
         },
-        else => return try newError("not a function: {s}", .{ function.objectType() }, allocator),
+        else => return try newError("not a function: {s}", .{function.objectType()}, allocator),
     }
 }
 
@@ -637,8 +642,10 @@ fn evalIndexExpression(
         if (opt_index) |*index| {
             if (left.inner_type == .Array and index.inner_type == .Integer) {
                 result = try evalArrayIndexExpression(left, index);
+            } else if (left.inner_type == .Hash) {
+                result = try evalHashIndexExpression(left, index, allocator);
             } else {
-                return try newError("index operator not supported: {s}", .{ left.objectType() }, allocator);
+                return try newError("index operator not supported: {s}", .{left.objectType()}, allocator);
             }
         }
     }
@@ -657,6 +664,65 @@ fn evalArrayIndexExpression(array: *const object.Object, index: *const object.Ob
     }
 
     return array_object.elements[@intCast(i)];
+}
+
+fn evalHashIndexExpression(hash: *const object.Object, index: *const object.Object, allocator: std.mem.Allocator) !?object.Object {
+    const hash_object: *object.Hash = hash.unwrap(object.Hash);
+    const hash_key = switch (index.inner_type) {
+        .Integer => object.Hashable.init(index.unwrap(object.Integer)),
+        .Boolean => object.Hashable.init(index.unwrap(object.Boolean)),
+        .String => object.Hashable.init(index.unwrap(object.String)),
+        else => {
+            return try newError("unusable as hash key: {s}", .{ index.objectType() }, allocator);
+        },
+    };
+
+    const pair = hash_object.pairs.get(hash_key.hashKey()) orelse return null;
+
+    return pair.value;
+}
+
+fn evalHashLiteral(hash_literal: *ast.HashLiteral, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
+    const hash = try allocator.create(object.Hash);
+    hash.pairs = std.ArrayHashMap(object.HashKey, object.HashPair, object.HashContext, true).init(allocator);
+
+    var iterator = hash_literal.pairs.iterator();
+    while (iterator.next()) |pair| {
+        const opt_key = try evalExpression(pair.key_ptr.*, env, allocator);
+
+        if (isError(opt_key)) {
+            hash.pairs.deinit();
+            allocator.destroy(hash);
+            return opt_key.?;
+        }
+
+        if (opt_key) |key| {
+            const hash_key = switch (key.inner_type) {
+                .Integer => object.Hashable.init(key.unwrap(object.Integer)),
+                .Boolean => object.Hashable.init(key.unwrap(object.Boolean)),
+                .String => object.Hashable.init(key.unwrap(object.String)),
+                else => {
+                    hash.pairs.deinit();
+                    allocator.destroy(hash);
+                    return try newError("unusable as hash key: {s}", .{key.objectType()}, allocator);
+                },
+            };
+
+            const opt_value = try evalExpression(pair.value_ptr.*, env, allocator);
+            if (isError(opt_value)) {
+                hash.pairs.deinit();
+                allocator.destroy(hash);
+                return opt_key.?;
+            }
+
+            if (opt_value) |value| {
+                const hashed = hash_key.hashKey();
+                try hash.pairs.put(hashed, object.HashPair{ .key = key, .value = value });
+            }
+        }
+    }
+
+    return object.Object.init(hash);
 }
 
 fn isTruthy(obj: object.Object) bool {
@@ -817,7 +883,7 @@ fn testReturnStatement(input: []const u8, expected_value: parser.TestValue) !voi
             else => {
                 std.debug.print("no integer object returned\n", .{});
                 unreachable;
-            }
+            },
         }
     } else {
         unreachable;
@@ -857,7 +923,7 @@ test "error handling" {
         \\
         \\  return 1;
         \\}
-        ,
+    ,
         "unknown operator: BOOLEAN + BOOLEAN",
     );
     try testErrorHandling(
@@ -866,8 +932,13 @@ test "error handling" {
     );
     try testErrorHandling(
         \\"Hello" - "World"
-        ,
+    ,
         "unknown operator: STRING - STRING",
+    );
+    try testErrorHandling(
+        \\{"name": "Monkey"}[fn(x) { x }];
+    ,
+        "unusable as hash key: FUNCTION",
     );
 }
 
@@ -878,7 +949,7 @@ fn testErrorHandling(input: []const u8, expected_error: []const u8) !void {
             else => {
                 std.debug.print("no error object returned\n", .{});
                 unreachable;
-            }
+            },
         }
     } else {
         unreachable;
@@ -907,7 +978,7 @@ fn testLetStatement(input: []const u8, expected_value: i64) !void {
             else => {
                 std.debug.print("no integer received from statement\n", .{});
                 unreachable;
-            }
+            },
         }
     } else {
         unreachable;
@@ -963,7 +1034,7 @@ test "closures" {
         \\
         \\let addTwo = newAdder(2);
         \\addTwo(2);
-        ;
+    ;
 
     try testFunctionCall(input, 4);
 }
@@ -1011,7 +1082,7 @@ test "builtin functions" {
     try testBuiltinFunction("last([1, 2, 3])", .{ .int_value = 3 });
     try testBuiltinFunction("last([])", null);
     try testBuiltinFunction("last(1)", .{ .string_value = "argument to `last` must be ARRAY, got INTEGER" });
-    try testBuiltinFunction("rest([1, 2, 3])", .{ .int_array_value = &.{2, 3} });
+    try testBuiltinFunction("rest([1, 2, 3])", .{ .int_array_value = &.{ 2, 3 } });
     try testBuiltinFunction("rest([])", null);
     try testBuiltinFunction("push([], 1)", .{ .int_array_value = &.{1} });
     try testBuiltinFunction("push(1, 1)", .{ .string_value = "argument to `push` must be ARRAY, got INTEGER" });
@@ -1037,9 +1108,9 @@ fn testBuiltinFunction(input: []const u8, expected_value: ?parser.TestValue) !vo
                 }
             },
             else => {
-                std.debug.print("no value received from statement, got {?}\n", .{ evaluated.inner_type });
+                std.debug.print("no value received from statement, got {?}\n", .{evaluated.inner_type});
                 unreachable;
-            }
+            },
         }
     } else {
         unreachable;
@@ -1108,7 +1179,92 @@ fn testArrayIndexExpression(input: []const u8, expected_value: ?parser.TestValue
         switch (evaluated.inner_type) {
             .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
             .Null => try std.testing.expectEqual(null, expected_value),
-            else => std.debug.print("unexpected array index type: {?}\n", .{ evaluated.inner_type }),
+            else => std.debug.print("unexpected array index type: {?}\n", .{evaluated.inner_type}),
+        }
+    } else {
+        try std.testing.expectEqual(null, expected_value);
+    }
+}
+
+test "hash literals" {
+    const input =
+        \\let two = "two";
+        \\{
+        \\    "one": 10 - 9,
+        \\    two: 1 + 1,
+        \\    "thr" + "ee": 6 / 2,
+        \\    4: 4,
+        \\    true: 5,
+        \\    false: 6
+        \\}
+    ;
+
+    if (try testEval(input)) |evaluated| {
+        const hash: *object.Hash = evaluated.unwrap(object.Hash);
+
+        try std.testing.expectEqual(6, hash.pairs.count());
+
+        try testArrayLiteral((object.String{ .value = "one" }).hashKey(), 1, hash);
+        try testArrayLiteral((object.String{ .value = "two" }).hashKey(), 2, hash);
+        try testArrayLiteral((object.String{ .value = "three" }).hashKey(), 3, hash);
+        try testArrayLiteral((object.Integer{ .value = 4 }).hashKey(), 4, hash);
+        try testArrayLiteral(TRUE.hashKey(), 5, hash);
+        try testArrayLiteral(FALSE.hashKey(), 6, hash);
+    }
+}
+
+fn testArrayLiteral(key: object.HashKey, expected_value: i64, hash: *object.Hash) !void {
+    const opt_pair = hash.pairs.getEntry(key);
+
+    try std.testing.expectEqual(true, opt_pair != null);
+
+    try testIntegerObject(opt_pair.?.value_ptr.value, expected_value);
+}
+
+test "hash index expressions" {
+    try testHashIndexExpression(
+        \\{"foo": 5}["foo"]
+    ,
+        .{ .int_value = 5 },
+    );
+    try testHashIndexExpression(
+        \\{"foo": 5}["bar"]
+    ,
+        null,
+    );
+    try testHashIndexExpression(
+        \\let key = "foo"; {"foo": 5}[key]
+    ,
+        .{ .int_value = 5 },
+    );
+    try testHashIndexExpression(
+        \\{}["foo"]
+    ,
+        null,
+    );
+    try testHashIndexExpression(
+        \\{5: 5}[5]
+    ,
+        .{ .int_value = 5 },
+    );
+    try testHashIndexExpression(
+        \\{true: 5}[true]
+    ,
+        .{ .int_value = 5 },
+    );
+    try testHashIndexExpression(
+        \\{false: 5}[false]
+    ,
+        .{ .int_value = 5 },
+    );
+}
+
+fn testHashIndexExpression(input: []const u8, expected_value: ?parser.TestValue) !void {
+    if (try testEval(input)) |evaluated| {
+        switch (evaluated.inner_type) {
+            .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
+            .Null => try std.testing.expectEqual(null, expected_value),
+            else => std.debug.print("unexpected array index type: {?}\n", .{evaluated.inner_type}),
         }
     } else {
         try std.testing.expectEqual(null, expected_value);

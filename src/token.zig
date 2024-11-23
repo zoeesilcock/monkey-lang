@@ -48,6 +48,7 @@ pub const NOT_EQ = "!=";
 // Delimiters
 pub const COMMA = ",";
 pub const SEMICOLON = ";";
+pub const COLON = ";";
 
 pub const LPAREN = "(";
 pub const RPAREN = ")";

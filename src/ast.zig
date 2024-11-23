@@ -14,6 +14,7 @@ const NodeType = enum {
     BooleanLiteral,
     FunctionLiteral,
     ArrayLiteral,
+    HashLiteral,
     StringLiteral,
     PrefixExpression,
     InfixExpression,
@@ -65,6 +66,7 @@ pub const Node = struct {
             *BooleanLiteral => NodeType.BooleanLiteral,
             *FunctionLiteral => NodeType.FunctionLiteral,
             *ArrayLiteral => NodeType.ArrayLiteral,
+            *HashLiteral => NodeType.HashLiteral,
             *StringLiteral => NodeType.StringLiteral,
             *PrefixExpression => NodeType.PrefixExpression,
             *InfixExpression => NodeType.InfixExpression,
@@ -341,6 +343,7 @@ pub const ExpressionType = enum {
     IntegerLiteral,
     BooleanLiteral,
     ArrayLiteral,
+    HashLiteral,
     FunctionLiteral,
     StringLiteral,
     PrefixExpression,
@@ -391,6 +394,7 @@ pub const Expression = struct {
             *BooleanLiteral => ExpressionType.BooleanLiteral,
             *FunctionLiteral => ExpressionType.FunctionLiteral,
             *ArrayLiteral => ExpressionType.ArrayLiteral,
+            *HashLiteral => ExpressionType.HashLiteral,
             *StringLiteral => ExpressionType.StringLiteral,
             *PrefixExpression => ExpressionType.PrefixExpression,
             *InfixExpression => ExpressionType.InfixExpression,
@@ -578,6 +582,48 @@ pub const ArrayLiteral = struct {
         out = std.mem.concat(allocator, u8, &.{ 
             out,
             "]",
+        }) catch "";
+
+        return out;
+    }
+};
+
+pub const HashLiteral = struct {
+    token: token.Token,
+    pairs: std.AutoArrayHashMap(Expression, Expression),
+
+    pub fn tokenLiteral(self: *HashLiteral) []const u8 {
+        return self.token.literal;
+    }
+
+    pub fn expressionNode(self: HashLiteral) void {
+        _ = self;
+    }
+
+    pub fn string(self: *HashLiteral, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "{",
+        }) catch "";
+
+        var i: u32 = 0;
+        var iterator = self.pairs.iterator();
+        while (iterator.next()) |entry| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                entry.key_ptr.string(allocator),
+                ":",
+                entry.value_ptr.string(allocator),
+                if (i < self.pairs.count() - 1) ", " else "",
+            }) catch "";
+            i += 1;
+        }
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "}",
         }) catch "";
 
         return out;

@@ -13,12 +13,73 @@ pub const ERROR_OBJ = "ERROR";
 pub const FUNCTION_OBJ = "FUNCTION";
 pub const BUILTIN_OBJ = "BUILTIN";
 pub const ARRAY_OBJ = "ARRAY";
+pub const HASH_OBJ = "HASH";
+
+pub const HashableInnerKey = enum {
+    Integer,
+    Boolean,
+    String,
+};
+
+pub const HashKey = struct {
+    object_type: ObjectType,
+    value: u32,
+};
+
+pub const Hashable = struct {
+    ptr: *anyopaque,
+    inner_type: HashableInnerKey,
+    vtab: *const VTab,
+
+    const VTab = struct {
+        hashKey: *const fn(ptr: *anyopaque) HashKey,
+    };
+
+    pub fn hashKey(self: Hashable) HashKey {
+        return self.vtab.hashKey(self.ptr);
+    }
+
+    pub fn init(obj: anytype) Hashable {
+        const Ptr = @TypeOf(obj);
+        const PtrInfo = @typeInfo(Ptr);
+
+        std.debug.assert(PtrInfo == .Pointer);
+        std.debug.assert(PtrInfo.Pointer.size == .One);
+        std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+
+        const inner_type: HashableInnerKey = switch(Ptr) {
+            *Integer => HashableInnerKey.Integer,
+            *Boolean => HashableInnerKey.Boolean,
+            *String => HashableInnerKey.String,
+            else => {
+                std.debug.print("Unsupported Hashable type: {?}\n", .{ Ptr });
+                unreachable;
+            },
+        };
+
+        const impl = struct {
+            fn hashKey(ptr: *anyopaque) HashKey {
+                const self: Ptr = @ptrCast(@alignCast(ptr));
+                return self.hashKey();
+            }
+        };
+
+        return .{
+            .ptr = obj,
+            .inner_type = inner_type,
+            .vtab = &.{
+                .hashKey = impl.hashKey,
+            },
+        };
+    }
+};
 
 pub const ObjectInnerType = enum {
     Integer,
     Boolean,
     String,
     Array,
+    Hash,
     Null,
     ReturnValue,
     Error,
@@ -61,6 +122,7 @@ pub const Object = struct {
             *Boolean => ObjectInnerType.Boolean,
             *String => ObjectInnerType.String,
             *Array => ObjectInnerType.Array,
+            *Hash => ObjectInnerType.Hash,
             *Null => ObjectInnerType.Null,
             *ReturnValue => ObjectInnerType.ReturnValue,
             *Error => ObjectInnerType.Error,
@@ -105,6 +167,10 @@ pub const Integer = struct {
     pub fn inspect(self: Integer, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "{d}", .{ self.value }) catch "";
     }
+
+    pub fn hashKey(self: Integer) HashKey {
+        return HashKey{ .object_type = self.objectType(), .value = @intCast(self.value) };
+    }
 };
 
 pub const Boolean = struct {
@@ -118,6 +184,10 @@ pub const Boolean = struct {
     pub fn inspect(self: Boolean, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "{s}", .{ if (self.value) "true" else "false" }) catch "";
     }
+
+    pub fn hashKey(self: Boolean) HashKey {
+        return HashKey{ .object_type = self.objectType(), .value = if (self.value) 1 else 0 };
+    }
 };
 
 pub const String = struct {
@@ -130,6 +200,12 @@ pub const String = struct {
 
     pub fn inspect(self: String, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "{s}", .{ self.value }) catch "";
+    }
+
+    pub fn hashKey(self: String) HashKey {
+        var h = std.hash.Fnv1a_32.init();
+        h.update(self.value);
+        return HashKey{ .object_type = self.objectType(), .value = h.final() };
     }
 };
 
@@ -259,6 +335,59 @@ pub const Array = struct {
     }
 };
 
+pub const HashPair = struct {
+    key: Object,
+    value: Object,
+};
+
+pub const HashContext = struct {
+    pub fn hash(_: HashContext, key: HashKey) u32 {
+        return key.value + key.object_type[0];
+    }
+
+    pub fn eql(_: HashContext, a: HashKey, b: HashKey, _: usize) bool {
+        return a.value == b.value and std.mem.eql(u8, a.object_type, b.object_type);
+    }
+};
+
+pub const Hash = struct {
+    pairs: std.ArrayHashMap(HashKey, HashPair, HashContext, true),
+
+    pub fn objectType(self: Hash) ObjectType {
+        _ = self;
+        return HASH_OBJ;
+    }
+
+    pub fn inspect(self: Hash, allocator: std.mem.Allocator) []const u8 {
+        var out: []u8 = "";
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "{",
+        }) catch "";
+
+        var i: u32 = 0;
+        var iterator = self.pairs.iterator();
+        while (iterator.next()) |pair| {
+            out = std.mem.concat(allocator, u8, &.{ 
+                out,
+                pair.value_ptr.key.inspect(allocator),
+                ":",
+                pair.value_ptr.value.inspect(allocator),
+                if (i < self.pairs.count() - 1) ", " else "",
+            }) catch "";
+            i += 1;
+        }
+
+        out = std.mem.concat(allocator, u8, &.{ 
+            out,
+            "}",
+        }) catch "";
+
+        return out;
+    }
+};
+
 pub const Environment = struct {
     store: std.StringHashMap(Object),
     outer: ?*Environment,
@@ -320,4 +449,14 @@ test "environment" {
         const integer: *Integer = retreived.unwrap(Integer);
         try std.testing.expectEqual(expected_value, integer.value);
     }
+}
+
+test "string hash key" {
+    const hello1 = &String{ .value = "Hello World" };
+    const hello2 = &String{ .value = "Hello World" };
+    const diff1 = &String{ .value = "My name is johnny" };
+    const diff2 = &String{ .value = "My name is johnny" };
+
+    try std.testing.expectEqual(hello1.hashKey(), hello2.hashKey());
+    try std.testing.expectEqual(diff1.hashKey(), diff2.hashKey());
 }

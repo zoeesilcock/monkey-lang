@@ -66,6 +66,7 @@ pub const Parser = struct {
         try p.registerPrefix(token.FUNCTION, parseFunctionLiteral);
         try p.registerPrefix(token.IF, parseIfExpression);
         try p.registerPrefix(token.LBRACKET, parseArrayLiteral);
+        try p.registerPrefix(token.LBRACE, parseHashLiteral);
 
         try p.registerInfix(token.PLUS, parseInfixExpression);
         try p.registerInfix(token.MINUS, parseInfixExpression);
@@ -500,6 +501,49 @@ fn parseArrayLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
     array_literal.elements = try self.parseExpressionList(token.RBRACKET) orelse &.{};
 
     return ast.Expression.init(array_literal);
+}
+
+fn parseHashLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
+    tracer.trace(@src().fn_name);
+    defer tracer.untrace(@src().fn_name);
+
+    var hash_literal: *ast.HashLiteral = try self.allocator.create(ast.HashLiteral);
+    hash_literal.token = self.cur_token;
+    hash_literal.pairs = std.AutoArrayHashMap(ast.Expression, ast.Expression).init(self.allocator);
+
+    while (!self.peekTokenIs(token.RBRACE)) {
+        try self.nextToken();
+        const opt_key: ?ast.Expression = try self.parseExpression(.LOWEST);
+
+        if (!try self.expectPeek(token.COLON)) {
+            hash_literal.pairs.deinit();
+            self.allocator.destroy(hash_literal);
+            return null;
+        }
+
+        try self.nextToken();
+        const opt_value: ?ast.Expression = try self.parseExpression(.LOWEST);
+
+        if (opt_key) |key| {
+            if (opt_value) |value| {
+                try hash_literal.pairs.put(key, value);
+            }
+        }
+
+        if (!self.peekTokenIs(token.RBRACE) and !try self.expectPeek(token.COMMA)) {
+            hash_literal.pairs.deinit();
+            self.allocator.destroy(hash_literal);
+            return null;
+        }
+    }
+
+    if (!try self.expectPeek(token.RBRACE)) {
+        hash_literal.pairs.deinit();
+        self.allocator.destroy(hash_literal);
+        return null;
+    }
+
+    return ast.Expression.init(hash_literal);
 }
 
 fn parsePrefixExpression(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
@@ -1120,4 +1164,83 @@ test "parsing index expressions" {
     const index_expression: *ast.IndexExpression = stmt.expression.?.unwrap(ast.IndexExpression);
     try testIdentifier("myArray", index_expression.left);
     try testInfixEpression(.{ .int_value = 1 }, "+", .{ .int_value = 1 }, index_expression.index.?);
+}
+
+test "parsing hash literal string keys" {
+    const input = 
+        \\{"one": 1, "two": 2, "three": 3}
+    ;
+
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+
+    const hash_literal: *ast.HashLiteral = stmt.expression.?.unwrap(ast.HashLiteral);
+    try std.testing.expectEqual(3, hash_literal.pairs.count());
+
+    var expected = std.StringHashMap(i64).init(std.testing.allocator);
+    defer expected.deinit();
+
+    try expected.put("one", 1);
+    try expected.put("two", 2);
+    try expected.put("three", 3);
+
+    var iterator = hash_literal.pairs.iterator();
+    while (iterator.next()) |pair| {
+        var key_literal = pair.key_ptr.unwrap(ast.StringLiteral);
+        try testIntegerLiteral(expected.get(key_literal.string(setup.arena.allocator())).?, pair.value_ptr.*);
+    }
+}
+
+test "parsing empty hash literal" {
+    const input = "{}";
+
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+
+    const hash_literal: *ast.HashLiteral = stmt.expression.?.unwrap(ast.HashLiteral);
+    try std.testing.expectEqual(0, hash_literal.pairs.count());
+}
+
+test "parsing hash literals with expressions" {
+    const input = 
+        \\{"one": 0 + 1, "two": 10 - 8, "three": 15 / 5}
+    ;
+
+    var setup = try setupTestParser(input);
+    defer setup.deinit();
+
+    try expectErrors(&setup.parser, 0);
+
+    const stmt: *const ast.ExpressionStatement = setup.program.statements[0].unwrap(ast.ExpressionStatement);
+
+    const hash_literal: *ast.HashLiteral = stmt.expression.?.unwrap(ast.HashLiteral);
+    try std.testing.expectEqual(3, hash_literal.pairs.count());
+
+
+    var iterator = hash_literal.pairs.iterator();
+    if (iterator.next()) |pair| {
+        var key_literal = pair.key_ptr.unwrap(ast.StringLiteral);
+        try std.testing.expectEqualSlices(u8, "one", key_literal.string(setup.arena.allocator()));
+        try testInfixEpression(.{ .int_value = 0 }, "+", .{ .int_value = 1 }, pair.value_ptr.*);
+    }
+
+    if (iterator.next()) |pair| {
+        var key_literal = pair.key_ptr.unwrap(ast.StringLiteral);
+        try std.testing.expectEqualSlices(u8, "two", key_literal.string(setup.arena.allocator()));
+        try testInfixEpression(.{ .int_value = 10 }, "-", .{ .int_value = 8 }, pair.value_ptr.*);
+    }
+
+    if (iterator.next()) |pair| {
+        var key_literal = pair.key_ptr.unwrap(ast.StringLiteral);
+        try std.testing.expectEqualSlices(u8, "three", key_literal.string(setup.arena.allocator()));
+        try testInfixEpression(.{ .int_value = 15 }, "/", .{ .int_value = 5 }, pair.value_ptr.*);
+    }
 }
