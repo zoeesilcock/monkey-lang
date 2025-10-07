@@ -7,7 +7,7 @@ pub const Token = struct {
     literal: []const u8 = undefined,
 
     pub fn init(token_type: TokenType, char: u8, allocator: std.mem.Allocator) !Token {
-        return Token{ .token_type = token_type, .literal = try allocator.dupe(u8, &.{ char }) };
+        return Token{ .token_type = token_type, .literal = try allocator.dupe(u8, &.{char}) };
     }
 
     pub fn deinit(self: *Token, allocator: std.mem.Allocator) void {
@@ -19,6 +19,7 @@ pub const Token = struct {
         _ = fmt;
 
         try writer.print("{{ token_type: \"{s}\", literal: \"{s}\" }}", .{ self.token_type, self.literal });
+        writer.flush();
     }
 };
 

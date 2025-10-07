@@ -7,7 +7,7 @@ var trace_level: u32 = 0;
 fn tracePrint(prefix: []const u8, message: []const u8) void {
     if (OUTPUT_TRACING) {
         for (0..trace_level) |_| {
-            std.debug.print("{s}", .{ TRACE_INDENT_PLACEHOLDER });
+            std.debug.print("{s}", .{TRACE_INDENT_PLACEHOLDER});
         }
         std.debug.print("{s}{s}\n", .{ prefix, message });
     }
