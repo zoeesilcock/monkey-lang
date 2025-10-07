@@ -74,7 +74,7 @@ pub const Node = struct {
             *CallExpression => NodeType.CallExpression,
             *IndexExpression => NodeType.IndexExpression,
             else => {
-                std.debug.print("Unsupported Node type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Node type: {t}\n", .{Ptr});
                 unreachable;
             },
         };
@@ -198,7 +198,7 @@ pub const Statement = struct {
             *ExpressionStatement => StatementType.ExpressionStatement,
             *BlockStatement => StatementType.BlockStatement,
             else => {
-                std.debug.print("Unsupported Statement type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Statement type: {t}\n", .{Ptr});
                 unreachable;
             },
         };
@@ -402,7 +402,7 @@ pub const Expression = struct {
             *CallExpression => ExpressionType.CallExpression,
             *IndexExpression => ExpressionType.IndexExpression,
             else => {
-                std.debug.print("Unsupported Expression type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Expression type: {t}\n", .{Ptr});
                 unreachable;
             },
         };

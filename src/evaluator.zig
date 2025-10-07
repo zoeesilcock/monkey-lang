@@ -325,7 +325,7 @@ pub fn eval(node: ast.Node, env: *object.Environment, allocator: std.mem.Allocat
             return evalHashLiteral(hash_literal, env, allocator);
         },
         else => {
-            std.debug.print("Unexpected Node type in eval: {?}\n", .{node.node_type});
+            std.debug.print("Unexpected Node type in eval: {t}\n", .{node.node_type});
             return null;
         },
     }
@@ -376,7 +376,7 @@ fn evalStatement(stmt: *const ast.Statement, env: *object.Environment, allocator
         .ReturnStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ReturnStatement)), env, allocator),
         .LetStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.LetStatement)), env, allocator),
         else => {
-            std.debug.print("Unexpected statement type in evalStatements: {?}\n", .{stmt.statement_type});
+            std.debug.print("Unexpected statement type in evalStatements: {t}\n", .{stmt.statement_type});
             unreachable;
         },
     }
@@ -1119,7 +1119,7 @@ fn testBuiltinFunction(input: []const u8, expected_value: ?parser.TestValue) !vo
                 }
             },
             else => {
-                std.debug.print("no value received from statement, got {?}\n", .{evaluated.inner_type});
+                std.debug.print("no value received from statement, got {t}\n", .{evaluated.inner_type});
                 unreachable;
             },
         }
@@ -1190,7 +1190,7 @@ fn testArrayIndexExpression(input: []const u8, expected_value: ?parser.TestValue
         switch (evaluated.inner_type) {
             .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
             .Null => try std.testing.expectEqual(null, expected_value),
-            else => std.debug.print("unexpected array index type: {?}\n", .{evaluated.inner_type}),
+            else => std.debug.print("unexpected array index type: {t}\n", .{evaluated.inner_type}),
         }
     } else {
         try std.testing.expectEqual(null, expected_value);
@@ -1275,7 +1275,7 @@ fn testHashIndexExpression(input: []const u8, expected_value: ?parser.TestValue)
         switch (evaluated.inner_type) {
             .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
             .Null => try std.testing.expectEqual(null, expected_value),
-            else => std.debug.print("unexpected array index type: {?}\n", .{evaluated.inner_type}),
+            else => std.debug.print("unexpected array index type: {t}\n", .{evaluated.inner_type}),
         }
     } else {
         try std.testing.expectEqual(null, expected_value);
