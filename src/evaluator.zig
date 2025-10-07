@@ -110,13 +110,13 @@ fn builtinRest(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
     const length = array_object.elements.len;
     if (length > 0) {
         var result: *object.Array = try allocator.create(object.Array);
-        var new_elements = std.ArrayList(object.Object).init(allocator);
+        var new_elements: std.ArrayList(object.Object) = .empty;
 
         for (array_object.elements[1..]) |element| {
-            try new_elements.append(element);
+            try new_elements.append(allocator, element);
         }
 
-        result.elements = try new_elements.toOwnedSlice();
+        result.elements = try new_elements.toOwnedSlice(allocator);
         return object.Object.init(result);
     }
 
@@ -133,22 +133,22 @@ fn builtinPush(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
     }
 
     const array_object = args[0].unwrap(object.Array);
-    var new_elements = std.ArrayList(object.Object).init(allocator);
+    var new_elements: std.ArrayList(object.Object) = .empty;
 
     for (array_object.elements) |element| {
-        try new_elements.append(element);
+        try new_elements.append(allocator, element);
     }
 
-    try new_elements.append(args[1]);
+    try new_elements.append(allocator, args[1]);
 
     var result: *object.Array = try allocator.create(object.Array);
-    result.elements = try new_elements.toOwnedSlice();
+    result.elements = try new_elements.toOwnedSlice(allocator);
     return object.Object.init(result);
 }
 
 fn builtinPuts(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     for (args) |arg| {
-        std.debug.print("{s}\n", .{ arg.inspect(allocator) });
+        std.debug.print("{s}\n", .{arg.inspect(allocator)});
     }
 
     return object.Object.init(@constCast(NULL));
@@ -408,18 +408,18 @@ fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, all
 }
 
 fn evalExpressions(expressions: []ast.Expression, env: *object.Environment, allocator: std.mem.Allocator) ![]object.Object {
-    var result = std.ArrayList(object.Object).init(allocator);
+    var result: std.ArrayList(object.Object) = .empty;
 
     for (expressions) |e| {
         if (try evalExpression(e, env, allocator)) |evaluated| {
-            try result.append(evaluated);
+            try result.append(allocator, evaluated);
             if (isError(evaluated)) {
                 break;
             }
         }
     }
 
-    return try result.toOwnedSlice();
+    return try result.toOwnedSlice(allocator);
 }
 
 fn evalPrefixExpression(operator: []const u8, opt_right: ?object.Object, allocator: std.mem.Allocator) !?object.Object {
@@ -684,7 +684,7 @@ fn evalHashIndexExpression(hash: *const object.Object, index: *const object.Obje
         .Boolean => object.Hashable.init(index.unwrap(object.Boolean)),
         .String => object.Hashable.init(index.unwrap(object.String)),
         else => {
-            return try newError("unusable as hash key: {s}", .{ index.objectType() }, allocator);
+            return try newError("unusable as hash key: {s}", .{index.objectType()}, allocator);
         },
     };
 

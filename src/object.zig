@@ -32,7 +32,7 @@ pub const Hashable = struct {
     vtab: *const VTab,
 
     const VTab = struct {
-        hashKey: *const fn(ptr: *anyopaque) HashKey,
+        hashKey: *const fn (ptr: *anyopaque) HashKey,
     };
 
     pub fn hashKey(self: Hashable) HashKey {
@@ -43,16 +43,16 @@ pub const Hashable = struct {
         const Ptr = @TypeOf(obj);
         const PtrInfo = @typeInfo(Ptr);
 
-        std.debug.assert(PtrInfo == .Pointer);
-        std.debug.assert(PtrInfo.Pointer.size == .One);
-        std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+        std.debug.assert(PtrInfo == .pointer);
+        std.debug.assert(PtrInfo.pointer.size == .one);
+        std.debug.assert(@typeInfo(PtrInfo.pointer.child) == .@"struct");
 
-        const inner_type: HashableInnerKey = switch(Ptr) {
+        const inner_type: HashableInnerKey = switch (Ptr) {
             *Integer => HashableInnerKey.Integer,
             *Boolean => HashableInnerKey.Boolean,
             *String => HashableInnerKey.String,
             else => {
-                std.debug.print("Unsupported Hashable type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Hashable type: {t}\n", .{Ptr});
                 unreachable;
             },
         };
@@ -93,7 +93,7 @@ pub const Object = struct {
     vtab: *const VTab,
 
     const VTab = struct {
-        objectType: *const fn(ptr: *anyopaque) ObjectType,
+        objectType: *const fn (ptr: *anyopaque) ObjectType,
         inspect: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) []const u8,
     };
 
@@ -113,11 +113,11 @@ pub const Object = struct {
         const Ptr = @TypeOf(obj);
         const PtrInfo = @typeInfo(Ptr);
 
-        std.debug.assert(PtrInfo == .Pointer);
-        std.debug.assert(PtrInfo.Pointer.size == .One);
-        std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+        std.debug.assert(PtrInfo == .pointer);
+        std.debug.assert(PtrInfo.pointer.size == .one);
+        std.debug.assert(@typeInfo(PtrInfo.pointer.child) == .@"struct");
 
-        const inner_type: ObjectInnerType = switch(Ptr) {
+        const inner_type: ObjectInnerType = switch (Ptr) {
             *Integer => ObjectInnerType.Integer,
             *Boolean => ObjectInnerType.Boolean,
             *String => ObjectInnerType.String,
@@ -129,7 +129,7 @@ pub const Object = struct {
             *Function => ObjectInnerType.Function,
             *Builtin => ObjectInnerType.Builtin,
             else => {
-                std.debug.print("Unsupported Object type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Object type: {t}\n", .{Ptr});
                 unreachable;
             },
         };
@@ -165,7 +165,7 @@ pub const Integer = struct {
     }
 
     pub fn inspect(self: Integer, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{d}", .{ self.value }) catch "";
+        return std.fmt.allocPrint(allocator, "{d}", .{self.value}) catch "";
     }
 
     pub fn hashKey(self: Integer) HashKey {
@@ -182,7 +182,7 @@ pub const Boolean = struct {
     }
 
     pub fn inspect(self: Boolean, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{s}", .{ if (self.value) "true" else "false" }) catch "";
+        return std.fmt.allocPrint(allocator, "{s}", .{if (self.value) "true" else "false"}) catch "";
     }
 
     pub fn hashKey(self: Boolean) HashKey {
@@ -199,7 +199,7 @@ pub const String = struct {
     }
 
     pub fn inspect(self: String, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{s}", .{ self.value }) catch "";
+        return std.fmt.allocPrint(allocator, "{s}", .{self.value}) catch "";
     }
 
     pub fn hashKey(self: String) HashKey {
@@ -244,7 +244,7 @@ pub const Error = struct {
     }
 
     pub fn inspect(self: Error, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "ERROR: {s}", .{ self.message }) catch "";
+        return std.fmt.allocPrint(allocator, "ERROR: {s}", .{self.message}) catch "";
     }
 };
 
@@ -261,22 +261,21 @@ pub const Function = struct {
     pub fn inspect(self: Function, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "fn",
             "(",
         }) catch "";
 
-
         for (self.parameters, 0..) |param, i| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 param.string(allocator),
                 if (i < self.parameters.len - 1) ", " else "",
             }) catch "";
         }
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             ") {\n",
             if (self.body) |body| body.string(allocator) else "",
@@ -313,20 +312,20 @@ pub const Array = struct {
     pub fn inspect(self: Array, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "[",
         }) catch "";
 
         for (self.elements, 0..) |element, i| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 element.inspect(allocator),
                 if (i < self.elements.len - 1) ", " else "",
             }) catch "";
         }
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "]",
         }) catch "";
@@ -361,7 +360,7 @@ pub const Hash = struct {
     pub fn inspect(self: Hash, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "{",
         }) catch "";
@@ -369,7 +368,7 @@ pub const Hash = struct {
         var i: u32 = 0;
         var iterator = self.pairs.iterator();
         while (iterator.next()) |pair| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 pair.value_ptr.key.inspect(allocator),
                 ":",
@@ -379,7 +378,7 @@ pub const Hash = struct {
             i += 1;
         }
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "}",
         }) catch "";
@@ -409,7 +408,7 @@ pub const Environment = struct {
 
     pub fn deinit(self: *Environment) void {
         var iterator = self.store.iterator();
-        while (iterator.next()) | entry | {
+        while (iterator.next()) |entry| {
             self.allocator.free(entry.key_ptr.*);
         }
         self.store.deinit();
