@@ -36,7 +36,7 @@ pub const Parser = struct {
     pub fn new(l: *lexer.Lexer, allocator: std.mem.Allocator, temp_allocator: std.mem.Allocator) !Parser {
         var p = Parser{
             .l = l,
-            .allocator =  allocator,
+            .allocator = allocator,
             .temp_allocator = temp_allocator,
             .errors = &.{},
             .prefixParseFns = std.StringHashMap(prefixParseFn).init(temp_allocator),
@@ -95,17 +95,17 @@ pub const Parser = struct {
             .statements = undefined,
         };
 
-        var statements = std.ArrayList(ast.Statement).init(self.temp_allocator);
+        var statements: std.ArrayList(ast.Statement) = .empty;
 
         while (!std.mem.eql(u8, self.cur_token.token_type, token.EOF)) {
             if (try self.parseStatement()) |stmt| {
-                try statements.append(stmt);
+                try statements.append(self.temp_allocator, stmt);
             }
 
             try self.nextToken();
         }
 
-        program.statements = try statements.toOwnedSlice();
+        program.statements = try statements.toOwnedSlice(self.temp_allocator);
 
         return program;
     }
@@ -194,16 +194,16 @@ pub const Parser = struct {
 
         try self.nextToken();
 
-        var statements = std.ArrayList(ast.Statement).init(self.allocator);
+        var statements: std.ArrayList(ast.Statement) = .empty;
         while (!self.curTokenIs(token.RBRACE) and !self.curTokenIs(token.EOF)) {
             if (try self.parseStatement()) |stmt| {
-                try statements.append(stmt);
+                try statements.append(self.allocator, stmt);
             }
 
             try self.nextToken();
         }
 
-        block.statements = try statements.toOwnedSlice();
+        block.statements = try statements.toOwnedSlice(self.allocator);
 
         return block;
     }
@@ -261,11 +261,11 @@ pub const Parser = struct {
         tracer.trace(@src().fn_name);
         defer tracer.untrace(@src().fn_name);
 
-        var identifiers = std.ArrayList(*ast.Identifier).init(self.allocator);
+        var identifiers: std.ArrayList(*ast.Identifier) = .empty;
 
         if (self.peekTokenIs(token.RPAREN)) {
             try self.nextToken();
-            return try identifiers.toOwnedSlice();
+            return try identifiers.toOwnedSlice(self.allocator);
         }
 
         try self.nextToken();
@@ -273,7 +273,7 @@ pub const Parser = struct {
         var identifier: *ast.Identifier = try self.allocator.create(ast.Identifier);
         identifier.token = self.cur_token;
         identifier.value = try self.allocator.dupe(u8, self.cur_token.literal);
-        try identifiers.append(identifier);
+        try identifiers.append(self.allocator, identifier);
 
         while (self.peekTokenIs(token.COMMA)) {
             try self.nextToken();
@@ -282,30 +282,30 @@ pub const Parser = struct {
             identifier = try self.allocator.create(ast.Identifier);
             identifier.token = self.cur_token;
             identifier.value = try self.allocator.dupe(u8, self.cur_token.literal);
-            try identifiers.append(identifier);
+            try identifiers.append(self.allocator, identifier);
         }
 
         if (!try self.expectPeek(token.RPAREN)) {
             return null;
         }
 
-        return try identifiers.toOwnedSlice();
+        return try identifiers.toOwnedSlice(self.allocator);
     }
 
     fn parseExpressionList(self: *Parser, end: token.TokenType) !?[]ast.Expression {
         tracer.trace(@src().fn_name);
         defer tracer.untrace(@src().fn_name);
 
-        var args = std.ArrayList(ast.Expression).init(self.allocator);
+        var args: std.ArrayList(ast.Expression) = .empty;
 
         if (self.peekTokenIs(end)) {
             try self.nextToken();
-            return try args.toOwnedSlice();
+            return try args.toOwnedSlice(self.allocator);
         }
 
         try self.nextToken();
         if (try self.parseExpression(.LOWEST)) |expression| {
-            try args.append(expression);
+            try args.append(self.allocator, expression);
         }
 
         while (self.peekTokenIs(token.COMMA)) {
@@ -313,7 +313,7 @@ pub const Parser = struct {
             try self.nextToken();
 
             if (try self.parseExpression(.LOWEST)) |expression| {
-                try args.append(expression);
+                try args.append(self.allocator, expression);
             }
         }
 
@@ -321,18 +321,18 @@ pub const Parser = struct {
             return null;
         }
 
-        return try args.toOwnedSlice();
+        return try args.toOwnedSlice(self.allocator);
     }
 
     fn noPrefixParseFnError(self: *Parser, token_type: token.TokenType) !void {
         var error_array = try std.ArrayList([]const u8).initCapacity(self.temp_allocator, self.errors.len);
-        try error_array.appendSlice(self.errors);
-        try error_array.append(try std.fmt.allocPrint(
+        try error_array.appendSlice(self.temp_allocator, self.errors);
+        try error_array.append(self.temp_allocator, try std.fmt.allocPrint(
             self.temp_allocator,
             "no prefix parse function for {s} found\n",
             .{token_type},
         ));
-        self.errors = try error_array.toOwnedSlice();
+        self.errors = try error_array.toOwnedSlice(self.temp_allocator);
     }
 
     fn nextToken(self: *Parser) !void {
@@ -360,16 +360,16 @@ pub const Parser = struct {
 
     fn peekError(self: *Parser, t: token.TokenType) !void {
         var error_array = try std.ArrayList([]const u8).initCapacity(self.temp_allocator, self.errors.len);
-        try error_array.appendSlice(self.errors);
+        try error_array.appendSlice(self.temp_allocator, self.errors);
 
         const message = try std.fmt.allocPrint(
             self.temp_allocator,
             "expected next token to be {s}, got {s} instead\n",
             .{ t, self.peek_token.token_type },
         );
-        try error_array.append(message);
+        try error_array.append(self.temp_allocator, message);
 
-        self.errors = try error_array.toOwnedSlice();
+        self.errors = try error_array.toOwnedSlice(self.temp_allocator);
     }
 
     fn peekPrecedence(self: *Parser) u32 {
@@ -1079,7 +1079,7 @@ test "function literals" {
 test "function parameters" {
     try testFunctionParameters("fn() {};", &.{});
     try testFunctionParameters("fn(x) {};", &.{"x"});
-    try testFunctionParameters("fn(x, y, z) {};", &.{"x", "y", "z"});
+    try testFunctionParameters("fn(x, y, z) {};", &.{ "x", "y", "z" });
 }
 
 fn testFunctionParameters(input: []const u8, expected_params: []const []const u8) !void {
@@ -1167,7 +1167,7 @@ test "parsing index expressions" {
 }
 
 test "parsing hash literal string keys" {
-    const input = 
+    const input =
         \\{"one": 1, "two": 2, "three": 3}
     ;
 
@@ -1210,7 +1210,7 @@ test "parsing empty hash literal" {
 }
 
 test "parsing hash literals with expressions" {
-    const input = 
+    const input =
         \\{"one": 0 + 1, "two": 10 - 8, "three": 15 / 5}
     ;
 
@@ -1223,7 +1223,6 @@ test "parsing hash literals with expressions" {
 
     const hash_literal: *ast.HashLiteral = stmt.expression.?.unwrap(ast.HashLiteral);
     try std.testing.expectEqual(3, hash_literal.pairs.count());
-
 
     var iterator = hash_literal.pairs.iterator();
     if (iterator.next()) |pair| {
