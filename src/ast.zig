@@ -29,7 +29,7 @@ pub const Node = struct {
     vtab: *const VTab,
 
     const VTab = struct {
-        tokenLiteral: *const fn(ptr: *anyopaque) []const u8,
+        tokenLiteral: *const fn (ptr: *anyopaque) []const u8,
         string: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) []const u8,
     };
 
@@ -49,11 +49,11 @@ pub const Node = struct {
         const Ptr = @TypeOf(obj);
         const PtrInfo = @typeInfo(Ptr);
 
-        std.debug.assert(PtrInfo == .Pointer);
-        std.debug.assert(PtrInfo.Pointer.size == .One);
-        std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+        std.debug.assert(PtrInfo == .pointer);
+        std.debug.assert(PtrInfo.pointer.size == .one);
+        std.debug.assert(@typeInfo(PtrInfo.pointer.child) == .@"struct");
 
-        const node_type: NodeType = switch(Ptr) {
+        const node_type: NodeType = switch (Ptr) {
             *Program => NodeType.Program,
             *Statement => NodeType.Statement,
             *Expression => NodeType.Expression,
@@ -74,7 +74,7 @@ pub const Node = struct {
             *CallExpression => NodeType.CallExpression,
             *IndexExpression => NodeType.IndexExpression,
             else => {
-                std.debug.print("Unsupported Node type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Node type: {t}\n", .{Ptr});
                 unreachable;
             },
         };
@@ -116,7 +116,7 @@ pub const Program = struct {
         var out: []u8 = "";
 
         for (self.statements) |stmt| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 stmt.string(allocator),
             }) catch "";
@@ -183,22 +183,22 @@ pub const Statement = struct {
     pub fn unwrap(self: Statement, comptime T: type) *T {
         return @ptrCast(@alignCast(self.ptr));
     }
- 
+
     pub fn init(obj: anytype) Statement {
         const Ptr = @TypeOf(obj);
         const PtrInfo = @typeInfo(Ptr);
 
-        std.debug.assert(PtrInfo == .Pointer);
-        std.debug.assert(PtrInfo.Pointer.size == .One);
-        std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+        std.debug.assert(PtrInfo == .pointer);
+        std.debug.assert(PtrInfo.pointer.size == .one);
+        std.debug.assert(@typeInfo(PtrInfo.pointer.child) == .@"struct");
 
-        const statement_type: StatementType = switch(Ptr) {
+        const statement_type: StatementType = switch (Ptr) {
             *LetStatement => StatementType.LetStatement,
             *ReturnStatement => StatementType.ReturnStatement,
             *ExpressionStatement => StatementType.ExpressionStatement,
             *BlockStatement => StatementType.BlockStatement,
             else => {
-                std.debug.print("Unsupported Statement type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Statement type: {t}\n", .{Ptr});
                 unreachable;
             },
         };
@@ -246,7 +246,7 @@ pub const LetStatement = struct {
     pub fn string(self: *LetStatement, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             self.tokenLiteral(),
             " ",
@@ -275,7 +275,7 @@ pub const ReturnStatement = struct {
     pub fn string(self: *ReturnStatement, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             self.tokenLiteral(),
             " ",
@@ -328,7 +328,7 @@ pub const BlockStatement = struct {
         var out: []u8 = "";
 
         for (self.statements) |stmt| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 stmt.string(allocator),
             }) catch "";
@@ -359,7 +359,7 @@ pub const Expression = struct {
     vtab: *const VTab,
 
     const VTab = struct {
-        tokenLiteral: *const fn(ptr: *anyopaque) []const u8,
+        tokenLiteral: *const fn (ptr: *anyopaque) []const u8,
         expressionNode: *const fn (ptr: *anyopaque) void,
         string: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) []const u8,
     };
@@ -384,11 +384,11 @@ pub const Expression = struct {
         const Ptr = @TypeOf(obj);
         const PtrInfo = @typeInfo(Ptr);
 
-        std.debug.assert(PtrInfo == .Pointer);
-        std.debug.assert(PtrInfo.Pointer.size == .One);
-        std.debug.assert(@typeInfo(PtrInfo.Pointer.child) == .Struct);
+        std.debug.assert(PtrInfo == .pointer);
+        std.debug.assert(PtrInfo.pointer.size == .one);
+        std.debug.assert(@typeInfo(PtrInfo.pointer.child) == .@"struct");
 
-        const expression_type: ExpressionType = switch(Ptr) {
+        const expression_type: ExpressionType = switch (Ptr) {
             *Identifier => ExpressionType.Identifier,
             *IntegerLiteral => ExpressionType.IntegerLiteral,
             *BooleanLiteral => ExpressionType.BooleanLiteral,
@@ -402,7 +402,7 @@ pub const Expression = struct {
             *CallExpression => ExpressionType.CallExpression,
             *IndexExpression => ExpressionType.IndexExpression,
             else => {
-                std.debug.print("Unsupported Expression type: {?}\n", .{ Ptr });
+                std.debug.print("Unsupported Expression type: {t}\n", .{Ptr});
                 unreachable;
             },
         };
@@ -504,26 +504,26 @@ pub const FunctionLiteral = struct {
     pub fn string(self: *FunctionLiteral, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "(",
         }) catch "";
 
         for (self.parameters, 0..) |param, i| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 param.string(allocator),
                 if (i < self.parameters.len - 1) ", " else "",
             }) catch "";
         }
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             ")",
         }) catch "";
 
         if (self.body) |body| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 body.string(allocator),
             }) catch "";
@@ -566,20 +566,20 @@ pub const ArrayLiteral = struct {
     pub fn string(self: *ArrayLiteral, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "[",
         }) catch "";
 
         for (self.elements, 0..) |element, i| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 element.string(allocator),
                 if (i < self.elements.len - 1) ", " else "",
             }) catch "";
         }
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "]",
         }) catch "";
@@ -603,7 +603,7 @@ pub const HashLiteral = struct {
     pub fn string(self: *HashLiteral, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "{",
         }) catch "";
@@ -611,7 +611,7 @@ pub const HashLiteral = struct {
         var i: u32 = 0;
         var iterator = self.pairs.iterator();
         while (iterator.next()) |entry| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 entry.key_ptr.string(allocator),
                 ":",
@@ -621,7 +621,7 @@ pub const HashLiteral = struct {
             i += 1;
         }
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "}",
         }) catch "";
@@ -646,7 +646,7 @@ pub const IndexExpression = struct {
     pub fn string(self: *IndexExpression, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "(",
             self.left.string(allocator),
@@ -675,7 +675,7 @@ pub const PrefixExpression = struct {
     pub fn string(self: *PrefixExpression, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "(",
             self.operator,
@@ -704,7 +704,7 @@ pub const InfixExpression = struct {
     pub fn string(self: *InfixExpression, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "(",
             if (self.left) |left_expression| left_expression.string(allocator) else "",
@@ -736,7 +736,7 @@ pub const IfExpression = struct {
     pub fn string(self: *IfExpression, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             "if",
             if (self.condition) |condition| condition.string(allocator) else "",
@@ -746,7 +746,7 @@ pub const IfExpression = struct {
         }) catch "";
 
         if (self.alternative) |alternative| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 "else",
                 alternative.string(allocator),
@@ -773,21 +773,21 @@ pub const CallExpression = struct {
     pub fn string(self: *CallExpression, allocator: std.mem.Allocator) []const u8 {
         var out: []u8 = "";
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             if (self.function) |function| function.string(allocator) else "",
             "(",
         }) catch "";
 
         for (self.arguments, 0..) |arg, i| {
-            out = std.mem.concat(allocator, u8, &.{ 
+            out = std.mem.concat(allocator, u8, &.{
                 out,
                 arg.string(allocator),
                 if (i < self.arguments.len - 1) ", " else "",
             }) catch "";
         }
 
-        out = std.mem.concat(allocator, u8, &.{ 
+        out = std.mem.concat(allocator, u8, &.{
             out,
             ")",
         }) catch "";

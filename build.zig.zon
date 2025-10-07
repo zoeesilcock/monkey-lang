@@ -1,9 +1,9 @@
 .{
-    .name = "monkey-lang",
-    .version = "0.0.1",
-    .minimum_zig_version = "0.13.0",
-    .dependencies = .{
-    },
+    .name = .monkey_lang,
+    .version = "0.1.0",
+    .fingerprint = 0x96a6efda16a3c429,
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",

@@ -110,13 +110,13 @@ fn builtinRest(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
     const length = array_object.elements.len;
     if (length > 0) {
         var result: *object.Array = try allocator.create(object.Array);
-        var new_elements = std.ArrayList(object.Object).init(allocator);
+        var new_elements: std.ArrayList(object.Object) = .empty;
 
         for (array_object.elements[1..]) |element| {
-            try new_elements.append(element);
+            try new_elements.append(allocator, element);
         }
 
-        result.elements = try new_elements.toOwnedSlice();
+        result.elements = try new_elements.toOwnedSlice(allocator);
         return object.Object.init(result);
     }
 
@@ -133,22 +133,22 @@ fn builtinPush(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allo
     }
 
     const array_object = args[0].unwrap(object.Array);
-    var new_elements = std.ArrayList(object.Object).init(allocator);
+    var new_elements: std.ArrayList(object.Object) = .empty;
 
     for (array_object.elements) |element| {
-        try new_elements.append(element);
+        try new_elements.append(allocator, element);
     }
 
-    try new_elements.append(args[1]);
+    try new_elements.append(allocator, args[1]);
 
     var result: *object.Array = try allocator.create(object.Array);
-    result.elements = try new_elements.toOwnedSlice();
+    result.elements = try new_elements.toOwnedSlice(allocator);
     return object.Object.init(result);
 }
 
 fn builtinPuts(args: []object.Object, allocator: std.mem.Allocator) std.mem.Allocator.Error!?object.Object {
     for (args) |arg| {
-        std.debug.print("{s}\n", .{ arg.inspect(allocator) });
+        std.debug.print("{s}\n", .{arg.inspect(allocator)});
     }
 
     return object.Object.init(@constCast(NULL));
@@ -325,7 +325,7 @@ pub fn eval(node: ast.Node, env: *object.Environment, allocator: std.mem.Allocat
             return evalHashLiteral(hash_literal, env, allocator);
         },
         else => {
-            std.debug.print("Unexpected Node type in eval: {?}\n", .{node.node_type});
+            std.debug.print("Unexpected Node type in eval: {t}\n", .{node.node_type});
             return null;
         },
     }
@@ -376,7 +376,7 @@ fn evalStatement(stmt: *const ast.Statement, env: *object.Environment, allocator
         .ReturnStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.ReturnStatement)), env, allocator),
         .LetStatement => result = try eval(ast.Node.init(stmt.unwrap(ast.LetStatement)), env, allocator),
         else => {
-            std.debug.print("Unexpected statement type in evalStatements: {?}\n", .{stmt.statement_type});
+            std.debug.print("Unexpected statement type in evalStatements: {t}\n", .{stmt.statement_type});
             unreachable;
         },
     }
@@ -408,18 +408,18 @@ fn evalExpression(opt_expression: ?ast.Expression, env: *object.Environment, all
 }
 
 fn evalExpressions(expressions: []ast.Expression, env: *object.Environment, allocator: std.mem.Allocator) ![]object.Object {
-    var result = std.ArrayList(object.Object).init(allocator);
+    var result: std.ArrayList(object.Object) = .empty;
 
     for (expressions) |e| {
         if (try evalExpression(e, env, allocator)) |evaluated| {
-            try result.append(evaluated);
+            try result.append(allocator, evaluated);
             if (isError(evaluated)) {
                 break;
             }
         }
     }
 
-    return try result.toOwnedSlice();
+    return try result.toOwnedSlice(allocator);
 }
 
 fn evalPrefixExpression(operator: []const u8, opt_right: ?object.Object, allocator: std.mem.Allocator) !?object.Object {
@@ -684,7 +684,7 @@ fn evalHashIndexExpression(hash: *const object.Object, index: *const object.Obje
         .Boolean => object.Hashable.init(index.unwrap(object.Boolean)),
         .String => object.Hashable.init(index.unwrap(object.String)),
         else => {
-            return try newError("unusable as hash key: {s}", .{ index.objectType() }, allocator);
+            return try newError("unusable as hash key: {s}", .{index.objectType()}, allocator);
         },
     };
 
@@ -1119,7 +1119,7 @@ fn testBuiltinFunction(input: []const u8, expected_value: ?parser.TestValue) !vo
                 }
             },
             else => {
-                std.debug.print("no value received from statement, got {?}\n", .{evaluated.inner_type});
+                std.debug.print("no value received from statement, got {t}\n", .{evaluated.inner_type});
                 unreachable;
             },
         }
@@ -1190,7 +1190,7 @@ fn testArrayIndexExpression(input: []const u8, expected_value: ?parser.TestValue
         switch (evaluated.inner_type) {
             .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
             .Null => try std.testing.expectEqual(null, expected_value),
-            else => std.debug.print("unexpected array index type: {?}\n", .{evaluated.inner_type}),
+            else => std.debug.print("unexpected array index type: {t}\n", .{evaluated.inner_type}),
         }
     } else {
         try std.testing.expectEqual(null, expected_value);
@@ -1275,7 +1275,7 @@ fn testHashIndexExpression(input: []const u8, expected_value: ?parser.TestValue)
         switch (evaluated.inner_type) {
             .Integer => try testIntegerObject(evaluated, expected_value.?.int_value),
             .Null => try std.testing.expectEqual(null, expected_value),
-            else => std.debug.print("unexpected array index type: {?}\n", .{evaluated.inner_type}),
+            else => std.debug.print("unexpected array index type: {t}\n", .{evaluated.inner_type}),
         }
     } else {
         try std.testing.expectEqual(null, expected_value);

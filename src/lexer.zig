@@ -91,8 +91,8 @@ pub const Lexer = struct {
                     result = try self.newToken(token.ASSIGN, self.char);
                 }
             },
-            '+' => { result = try self.newToken(token.PLUS, self.char); },
-            '-' => { result = try self.newToken(token.MINUS, self.char); },
+            '+' => result = try self.newToken(token.PLUS, self.char),
+            '-' => result = try self.newToken(token.MINUS, self.char),
             '!' => {
                 if (self.peekChar() == '=') {
                     const char1 = self.char;
@@ -103,24 +103,24 @@ pub const Lexer = struct {
                     result = try self.newToken(token.BANG, self.char);
                 }
             },
-            '/' => { result = try self.newToken(token.SLASH, self.char); },
-            '*' => { result = try self.newToken(token.ASTERISK, self.char); },
-            '<' => { result = try self.newToken(token.LT, self.char); },
-            '>' => { result = try self.newToken(token.GT, self.char); },
-            ';' => { result = try self.newToken(token.SEMICOLON, self.char); },
-            ':' => { result = try self.newToken(token.COLON, self.char); },
-            ',' => { result = try self.newToken(token.COMMA, self.char); },
-            '(' => { result = try self.newToken(token.LPAREN, self.char); },
-            ')' => { result = try self.newToken(token.RPAREN, self.char); },
-            '{' => { result = try self.newToken(token.LBRACE, self.char); },
-            '}' => { result = try self.newToken(token.RBRACE, self.char); },
-            '[' => { result = try self.newToken(token.LBRACKET, self.char); },
-            ']' => { result = try self.newToken(token.RBRACKET, self.char); },
+            '/' => result = try self.newToken(token.SLASH, self.char),
+            '*' => result = try self.newToken(token.ASTERISK, self.char),
+            '<' => result = try self.newToken(token.LT, self.char),
+            '>' => result = try self.newToken(token.GT, self.char),
+            ';' => result = try self.newToken(token.SEMICOLON, self.char),
+            ':' => result = try self.newToken(token.COLON, self.char),
+            ',' => result = try self.newToken(token.COMMA, self.char),
+            '(' => result = try self.newToken(token.LPAREN, self.char),
+            ')' => result = try self.newToken(token.RPAREN, self.char),
+            '{' => result = try self.newToken(token.LBRACE, self.char),
+            '}' => result = try self.newToken(token.RBRACE, self.char),
+            '[' => result = try self.newToken(token.LBRACKET, self.char),
+            ']' => result = try self.newToken(token.RBRACKET, self.char),
             '"' => {
                 result.token_type = token.STRING;
                 result.literal = self.readString();
             },
-            0 => { result = Token{ .token_type = token.EOF, .literal = "" }; },
+            0 => result = Token{ .token_type = token.EOF, .literal = "" },
             else => {
                 if (isLetter(self.char)) {
                     result.literal = self.readIdentifier();
@@ -161,7 +161,7 @@ pub const Lexer = struct {
 };
 
 test "next token" {
-    const input = 
+    const input =
         \\let five = 5;
         \\let ten = 10;
         \\
@@ -304,4 +304,3 @@ fn testTokenEquality(expected: token.Token, actual: token.Token) !void {
     try std.testing.expectEqualSlices(u8, expected.token_type, actual.token_type);
     try std.testing.expectEqualSlices(u8, expected.literal, actual.literal);
 }
-
