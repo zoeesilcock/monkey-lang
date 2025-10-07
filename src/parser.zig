@@ -152,7 +152,7 @@ pub const Parser = struct {
 
         var name = try self.allocator.create(ast.Identifier);
         name.token = self.cur_token;
-        name.value = self.cur_token.literal;
+        name.value = try self.allocator.dupe(u8, self.cur_token.literal);
 
         var stmt: *ast.LetStatement = try self.allocator.create(ast.LetStatement);
         stmt.token = tok;
@@ -423,7 +423,7 @@ fn parseStringLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 
     var literal: *ast.StringLiteral = try self.allocator.create(ast.StringLiteral);
     literal.token = self.cur_token;
-    literal.value = self.cur_token.literal;
+    literal.value = try self.allocator.dupe(u8, self.cur_token.literal);
 
     return ast.Expression.init(literal);
 }
