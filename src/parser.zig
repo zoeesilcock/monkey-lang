@@ -509,14 +509,14 @@ fn parseHashLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 
     var hash_literal: *ast.HashLiteral = try self.allocator.create(ast.HashLiteral);
     hash_literal.token = self.cur_token;
-    hash_literal.pairs = std.AutoArrayHashMap(ast.Expression, ast.Expression).init(self.allocator);
+    hash_literal.pairs = .empty;
 
     while (!self.peekTokenIs(token.RBRACE)) {
         try self.nextToken();
         const opt_key: ?ast.Expression = try self.parseExpression(.LOWEST);
 
         if (!try self.expectPeek(token.COLON)) {
-            hash_literal.pairs.deinit();
+            hash_literal.pairs.deinit(self.allocator);
             self.allocator.destroy(hash_literal);
             return null;
         }
@@ -526,19 +526,19 @@ fn parseHashLiteral(self: *Parser) std.mem.Allocator.Error!?ast.Expression {
 
         if (opt_key) |key| {
             if (opt_value) |value| {
-                try hash_literal.pairs.put(key, value);
+                try hash_literal.pairs.put(self.allocator, key, value);
             }
         }
 
         if (!self.peekTokenIs(token.RBRACE) and !try self.expectPeek(token.COMMA)) {
-            hash_literal.pairs.deinit();
+            hash_literal.pairs.deinit(self.allocator);
             self.allocator.destroy(hash_literal);
             return null;
         }
     }
 
     if (!try self.expectPeek(token.RBRACE)) {
-        hash_literal.pairs.deinit();
+        hash_literal.pairs.deinit(self.allocator);
         self.allocator.destroy(hash_literal);
         return null;
     }

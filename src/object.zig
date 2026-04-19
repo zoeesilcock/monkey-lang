@@ -350,7 +350,7 @@ pub const HashContext = struct {
 };
 
 pub const Hash = struct {
-    pairs: std.ArrayHashMap(HashKey, HashPair, HashContext, true),
+    pairs: std.array_hash_map.Custom(HashKey, HashPair, HashContext, true),
 
     pub fn objectType(self: Hash) ObjectType {
         _ = self;

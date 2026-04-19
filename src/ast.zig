@@ -590,7 +590,7 @@ pub const ArrayLiteral = struct {
 
 pub const HashLiteral = struct {
     token: token.Token,
-    pairs: std.AutoArrayHashMap(Expression, Expression),
+    pairs: std.array_hash_map.Auto(Expression, Expression),
 
     pub fn tokenLiteral(self: *HashLiteral) []const u8 {
         return self.token.literal;

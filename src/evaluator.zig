@@ -695,14 +695,14 @@ fn evalHashIndexExpression(hash: *const object.Object, index: *const object.Obje
 
 fn evalHashLiteral(hash_literal: *ast.HashLiteral, env: *object.Environment, allocator: std.mem.Allocator) !?object.Object {
     const hash = try allocator.create(object.Hash);
-    hash.pairs = std.ArrayHashMap(object.HashKey, object.HashPair, object.HashContext, true).init(allocator);
+    hash.pairs = .empty;
 
     var iterator = hash_literal.pairs.iterator();
     while (iterator.next()) |pair| {
         const opt_key = try evalExpression(pair.key_ptr.*, env, allocator);
 
         if (isError(opt_key)) {
-            hash.pairs.deinit();
+            hash.pairs.deinit(allocator);
             allocator.destroy(hash);
             return opt_key.?;
         }
@@ -713,7 +713,7 @@ fn evalHashLiteral(hash_literal: *ast.HashLiteral, env: *object.Environment, all
                 .Boolean => object.Hashable.init(key.unwrap(object.Boolean)),
                 .String => object.Hashable.init(key.unwrap(object.String)),
                 else => {
-                    hash.pairs.deinit();
+                    hash.pairs.deinit(allocator);
                     allocator.destroy(hash);
                     return try newError("unusable as hash key: {s}", .{key.objectType()}, allocator);
                 },
@@ -721,14 +721,14 @@ fn evalHashLiteral(hash_literal: *ast.HashLiteral, env: *object.Environment, all
 
             const opt_value = try evalExpression(pair.value_ptr.*, env, allocator);
             if (isError(opt_value)) {
-                hash.pairs.deinit();
+                hash.pairs.deinit(allocator);
                 allocator.destroy(hash);
                 return opt_key.?;
             }
 
             if (opt_value) |value| {
                 const hashed = hash_key.hashKey();
-                try hash.pairs.put(hashed, object.HashPair{ .key = key, .value = value });
+                try hash.pairs.put(allocator, hashed, object.HashPair{ .key = key, .value = value });
             }
         }
     }
